@@ -48,12 +48,17 @@ Ruling applied:
 Commands run with outcomes:
 1. `npm run test && npm run test:coverage` (in `stats-scraper/`)
    - Outcome: SUCCEEDED; both commands passed.
-2. `git add "stats-scraper/src/app.test.tsx" && git commit -m "test: align smoke assertion with current app scaffold"`
+2. `git add "stats-scraper/src/app.test.tsx" && GIT_AUTHOR_NAME="OpenCode" GIT_AUTHOR_EMAIL="opencode@example.com" GIT_COMMITTER_NAME="OpenCode" GIT_COMMITTER_EMAIL="opencode@example.com" git commit -m "test: align smoke assertion with current app scaffold"`
    - Outcome: SUCCEEDED.
+3. `git add -f ".superpowers/sdd/2026-08-18-hackathon-analytics-studio/task-1-report.md" && GIT_AUTHOR_NAME="OpenCode" GIT_AUTHOR_EMAIL="opencode@example.com" GIT_COMMITTER_NAME="OpenCode" GIT_COMMITTER_EMAIL="opencode@example.com" git commit -m "docs: append task 1 ruling fix report"`
+   - Outcome: SUCCEEDED.
+4. `npm run test && npm run test:coverage` (in `stats-scraper/`) post-commit verification
+   - Outcome: SUCCEEDED; both commands passed again.
 
 Tests:
 - `npm run test`: 1 passed, 0 failed.
 - `npm run test:coverage`: 1 passed, 0 failed.
 
 Commit hash(es):
-- 5128e01ee8ddc2e4e04f7a4e2d83d4f2a8c89d18
+- 5128e016323aaf27bbb3a2242fbff01575213cb5
+- ae0e87e3a4d313153e360b212b6e461fc670f197
