@@ -19,3 +19,6 @@ Verification:
 
 Concerns:
 - Runtime schema implementation is framework-agnostic and does not use Zod to avoid widening Task 2 scope into dependency management.
+
+Commit hash(es):
+- 77d422bfebd8344b8925e87899f1f03f2ce89663
