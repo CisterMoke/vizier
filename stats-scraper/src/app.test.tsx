@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/preact'
 import { App } from './app'
 
-it('renders app scaffold heading', () => {
+it('renders schema normalization studio shell', () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: /get started/i })).toBeInTheDocument()
+
+  expect(screen.getByRole('heading', { name: /schema normalization studio/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /normalize schema/i })).toBeInTheDocument()
 })
