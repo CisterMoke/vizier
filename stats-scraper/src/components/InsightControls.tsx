@@ -23,7 +23,7 @@ export function InsightControls({
         value={apiKey}
         onInput={(event) => onApiKeyChange((event.target as HTMLInputElement).value)}
       />
-      <button type="button" onClick={onGenerate} disabled={disabled || isGenerating || apiKey.trim().length === 0}>
+      <button type="button" onClick={onGenerate} disabled={disabled || isGenerating}>
         {isGenerating ? 'Generating...' : 'Generate insights'}
       </button>
     </section>
