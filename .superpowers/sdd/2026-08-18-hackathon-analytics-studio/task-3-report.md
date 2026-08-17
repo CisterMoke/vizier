@@ -120,7 +120,7 @@ Tests:
 - `src/components/schemaUi.test.tsx`: added `clears stale parse error when external schema update resets draft to valid JSON`.
 
 Commit hash(es):
-- PENDING
+- 0deed416ecfc46a4500f58d4f2ce42f6842df69b
 
 Concerns:
 - External schema updates remain authoritative and will clear both local draft text and local parse error state on sync.
