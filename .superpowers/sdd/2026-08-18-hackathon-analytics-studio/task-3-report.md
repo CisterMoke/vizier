@@ -91,7 +91,7 @@ Tests:
 - `src/components/schemaUi.test.tsx`: added `syncs textarea content to external schema updates after local edits`.
 
 Commit hash(es):
-- PENDING
+- c643bf7a152809ecf571db2a3e95925f9bd5ae73
 
 Concerns:
 - Editor now prioritizes external schema updates when props change, which intentionally replaces any in-progress local draft at that moment.
