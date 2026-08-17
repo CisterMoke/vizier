@@ -1,11 +1,8 @@
 # Hackathon Analytics Studio
 
-Frontend app lives in `stats-scraper/`.
-
 ## Local development
 
 1. Install dependencies:
-   - `cd stats-scraper`
    - `npm install`
 2. Start dev server: `npm run dev`
 3. Run unit tests: `npm run test`
@@ -24,8 +21,6 @@ Frontend app lives in `stats-scraper/`.
 - When generation fails or no API key is provided, the app loads fallback insights and mock datasets so the full workflow still works offline.
 
 ## Deploy to Vercel
-
-Run these commands from `stats-scraper/`:
 
 1. `npm install -g vercel`
 2. `vercel login`
