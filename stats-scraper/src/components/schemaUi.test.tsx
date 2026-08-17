@@ -37,3 +37,30 @@ it('emits canonical schema changes from the JSON preview editor', () => {
     warnings: []
   })
 })
+
+it('keeps local draft JSON when edit is invalid and only emits when valid', () => {
+  const onChange = vi.fn()
+  render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+
+  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+
+  fireEvent.input(editor, {
+    target: { value: '{"entities": [' }
+  })
+
+  expect(onChange).not.toHaveBeenCalled()
+  expect(editor.value).toBe('{"entities": [')
+  expect(screen.getByRole('alert')).toBeInTheDocument()
+
+  fireEvent.input(editor, {
+    target: {
+      value: '{"entities":[{"name":"products","fields":[{"name":"sku","type":"string","nullable":false}]}],"relationships":[],"warnings":[]}'
+    }
+  })
+
+  expect(onChange).toHaveBeenLastCalledWith({
+    entities: [{ name: 'products', fields: [{ name: 'sku', type: 'string', nullable: false }] }],
+    relationships: [],
+    warnings: []
+  })
+})
