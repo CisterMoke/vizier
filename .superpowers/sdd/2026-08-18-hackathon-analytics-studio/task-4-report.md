@@ -28,7 +28,7 @@ Verification:
    - Outcome: PASSED (5 test files, 11 tests).
 
 Commit hash(es):
-- PENDING
+- fcfb46f3bc7135898f34ba4ce34f014c40ba5f97
 
 Concerns:
 - Browser provider currently assumes JSON response shape of either an array or `{ insights: [...] }`; additional provider-specific adapters may be needed for non-conforming APIs.
