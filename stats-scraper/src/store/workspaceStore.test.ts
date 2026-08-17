@@ -20,7 +20,11 @@ const mockInsight: InsightCandidate = {
   id: 'ins-1',
   title: 'Revenue trend',
   summary: 'Track total revenue over time',
-  confidence: 0.9
+  confidence: 0.9,
+  hypothesis: 'Revenue increases over time.',
+  metricDescription: 'Weekly total revenue.',
+  chartRecommendation: 'line',
+  assumptions: ['Order totals are complete.']
 }
 
 const mockDataset: GeneratedDataset = {

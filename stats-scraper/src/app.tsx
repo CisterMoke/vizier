@@ -8,7 +8,7 @@ import { createBrowserLLMProvider } from './services/llmProvider'
 import { generateInsightCandidates } from './services/insightGeneration'
 import { generateMockDataset } from './services/mockData'
 import { FALLBACK_INSIGHTS, SAMPLE_SCHEMAS } from './data/sampleSchemas'
-import { serializeExportReport } from './lib/exportReport'
+import { downloadExportReport } from './lib/exportReport'
 import { useWorkspaceStore } from './store/workspaceStore'
 import './app.css'
 
@@ -17,7 +17,6 @@ export function App() {
   const [apiKey, setApiKey] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
-  const [reportJson, setReportJson] = useState('')
 
   const applyRawSchema = (rawText: string) => {
     workspace.setRawSchema(rawText)
@@ -92,7 +91,8 @@ export function App() {
 
   const handleExportReport = () => {
     const payload = workspace.exportReport()
-    setReportJson(serializeExportReport(payload))
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadExportReport(payload, `analytics-report-${stamp}.json`)
   }
 
   return (
@@ -100,7 +100,7 @@ export function App() {
       <h1>Schema Normalization Studio</h1>
       <p>Paste freeform schema text, normalize it, and repair JSON directly.</p>
 
-      <SchemaInputPanel onNormalize={applyRawSchema} />
+      <SchemaInputPanel onNormalize={applyRawSchema} sampleSchemas={SAMPLE_SCHEMAS} />
       <SchemaPreviewEditor schema={workspace.canonicalSchema} onChange={workspace.setCanonicalSchema} />
       <InsightControls
         apiKey={apiKey}
@@ -111,13 +111,6 @@ export function App() {
       />
 
       {generationError ? <p role="alert">{generationError}</p> : null}
-
-      <section>
-        <h2>Demo schema quick start</h2>
-        <button type="button" onClick={() => applyRawSchema(SAMPLE_SCHEMAS[0].rawSchema)}>
-          Load {SAMPLE_SCHEMAS[0].label}
-        </button>
-      </section>
 
       {workspace.canonicalSchema.warnings.length > 0 ? (
         <section>
@@ -157,7 +150,6 @@ export function App() {
         <button type="button" onClick={handleExportReport} disabled={workspace.insights.length === 0}>
           Export report
         </button>
-        {reportJson ? <pre>{reportJson}</pre> : null}
       </section>
 
       <ChartGrid

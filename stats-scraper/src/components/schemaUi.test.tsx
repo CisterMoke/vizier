@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/preact'
 import type { CanonicalSchema } from '../domain/types'
 import { SchemaInputPanel } from './SchemaInputPanel'
 import { SchemaPreviewEditor } from './SchemaPreviewEditor'
+import { SAMPLE_SCHEMAS } from '../data/sampleSchemas'
 
 const sampleSchema: CanonicalSchema = {
   entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
@@ -19,6 +20,22 @@ it('submits freeform schema text through the normalize callback', () => {
   fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
 
   expect(onNormalize).toHaveBeenCalledWith('orders(id int)')
+})
+
+it('allows selecting multiple sample schemas and inserting them into schema text', () => {
+  const onNormalize = vi.fn()
+  render(<SchemaInputPanel onNormalize={onNormalize} sampleSchemas={SAMPLE_SCHEMAS} />)
+
+  fireEvent.click(screen.getByLabelText(/retail orders/i))
+  fireEvent.click(screen.getByLabelText(/product usage/i))
+  fireEvent.click(screen.getByRole('button', { name: /insert selected samples/i }))
+
+  const textarea = screen.getByLabelText(/schema text/i) as HTMLTextAreaElement
+  expect(textarea.value).toContain('orders(id int, customer_id int, total decimal, created_at timestamp)')
+  expect(textarea.value).toContain('events(id int, user_id int, event_name text, occurred_at timestamp)')
+
+  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
+  expect(onNormalize).toHaveBeenCalledWith(textarea.value)
 })
 
 it('emits canonical schema changes from the JSON preview editor', () => {

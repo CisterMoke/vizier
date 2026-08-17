@@ -2,6 +2,18 @@ import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import type * as Plotly from 'plotly.js'
 
 const inferChartType = (insight: InsightCandidate): 'bar' | 'pie' | 'scatter' => {
+  if (insight.chartRecommendation === 'bar') {
+    return 'bar'
+  }
+
+  if (insight.chartRecommendation === 'pie') {
+    return 'pie'
+  }
+
+  if (insight.chartRecommendation === 'line' || insight.chartRecommendation === 'scatter') {
+    return 'scatter'
+  }
+
   const text = `${insight.title} ${insight.summary}`.toLowerCase()
 
   if (text.includes('pie') || text.includes('share') || text.includes('proportion')) {

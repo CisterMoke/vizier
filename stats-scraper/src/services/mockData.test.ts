@@ -20,7 +20,11 @@ const mockInsight: InsightCandidate = {
   id: 'ins-1',
   title: 'Repeat customer rate trend',
   summary: 'Track repeat rate by week.',
-  confidence: 0.9
+  confidence: 0.9,
+  hypothesis: 'Repeat rate changes week to week.',
+  metricDescription: 'Share of repeat customers by week.',
+  chartRecommendation: 'line',
+  assumptions: ['Customer IDs are stable across orders.']
 }
 
 it('generates deterministic rows for same seed', () => {

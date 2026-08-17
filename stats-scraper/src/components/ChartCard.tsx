@@ -1,5 +1,9 @@
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
+import PlotlyComponent from 'react-plotly.js'
 import { buildPlotlySpec } from '../services/chartSpec'
+
+const Plot =
+  (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
 
 interface ChartCardProps {
   insight: InsightCandidate
@@ -23,6 +27,22 @@ export function ChartCard({ insight, dataset, onRegenerate, onDelete }: ChartCar
       <p>
         Data source: {dataset.name} ({dataset.rows.length} rows)
       </p>
+      <p>{insight.hypothesis}</p>
+      <p>Metric logic: {insight.metricDescription}</p>
+      {insight.assumptions.length > 0 ? (
+        <ul>
+          {insight.assumptions.map((assumption) => (
+            <li key={assumption}>{assumption}</li>
+          ))}
+        </ul>
+      ) : null}
+      <Plot
+        data={spec.data}
+        layout={{ ...spec.layout, autosize: true }}
+        config={{ responsive: true, displaylogo: false }}
+        style={{ width: '100%', height: '320px' }}
+        useResizeHandler
+      />
       <div>
         <button type="button" onClick={() => onRegenerate(insight.id)}>
           Regenerate

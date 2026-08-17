@@ -29,6 +29,10 @@ export interface InsightCandidate {
   title: string
   summary: string
   confidence: number
+  hypothesis: string
+  metricDescription: string
+  chartRecommendation: 'bar' | 'line' | 'pie' | 'scatter' | 'table'
+  assumptions: string[]
 }
 
 export interface GeneratedDataset {
