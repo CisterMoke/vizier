@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import { parseCanonicalSchema } from '../domain/schemas'
 import type { CanonicalSchema } from '../domain/types'
 
@@ -11,15 +11,10 @@ export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorPro
   const [jsonError, setJsonError] = useState<string | null>(null)
   const serialized = useMemo(() => JSON.stringify(schema, null, 2), [schema])
   const [draft, setDraft] = useState(serialized)
-  const previousSerialized = useRef(serialized)
 
   useEffect(() => {
-    if (draft === previousSerialized.current) {
-      setDraft(serialized)
-    }
-
-    previousSerialized.current = serialized
-  }, [draft, serialized])
+    setDraft(serialized)
+  }, [serialized])
 
   const handleInput = (event: Event) => {
     const value = (event.target as HTMLTextAreaElement).value

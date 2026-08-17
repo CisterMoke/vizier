@@ -64,3 +64,26 @@ it('keeps local draft JSON when edit is invalid and only emits when valid', () =
     warnings: []
   })
 })
+
+it('syncs textarea content to external schema updates after local edits', () => {
+  const onChange = vi.fn()
+  const { rerender } = render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+
+  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+
+  fireEvent.input(editor, {
+    target: { value: '{"entities": [' }
+  })
+
+  expect(editor.value).toBe('{"entities": [')
+
+  const externalSchema: CanonicalSchema = {
+    entities: [{ name: 'customers', fields: [{ name: 'id', type: 'number', nullable: false }] }],
+    relationships: [],
+    warnings: []
+  }
+
+  rerender(<SchemaPreviewEditor schema={externalSchema} onChange={onChange} />)
+
+  expect(editor.value).toContain('"customers"')
+})

@@ -66,3 +66,32 @@ Commit hash(es):
 
 Concerns:
 - Entity extraction remains heuristic and top-level text-oriented; it handles nested parentheses in field types but is not a full SQL parser.
+
+---
+
+Fix status: DONE
+
+Reviewer finding addressed:
+- Medium: `SchemaPreviewEditor` now reliably syncs to external `schema` prop updates after local edits, while still preserving invalid intermediate draft text until a prop update occurs.
+
+Files changed (fix pass 2):
+- stats-scraper/src/components/SchemaPreviewEditor.tsx
+- stats-scraper/src/components/schemaUi.test.tsx
+
+Commands run with outcomes:
+1. `npm run test -- src/components/schemaUi.test.tsx`
+   - Outcome: FAILED as expected with new regression test (`syncs textarea content to external schema updates after local edits`) proving stale draft sync.
+2. Implemented focused sync fix in `SchemaPreviewEditor` effect to update draft whenever serialized external schema changes.
+3. `npm run test -- src/components/schemaUi.test.tsx`
+   - Outcome: PASSED (4 tests).
+4. `npm run test`
+   - Outcome: PASSED (4 test files, 8 tests).
+
+Tests:
+- `src/components/schemaUi.test.tsx`: added `syncs textarea content to external schema updates after local edits`.
+
+Commit hash(es):
+- PENDING
+
+Concerns:
+- Editor now prioritizes external schema updates when props change, which intentionally replaces any in-progress local draft at that moment.
