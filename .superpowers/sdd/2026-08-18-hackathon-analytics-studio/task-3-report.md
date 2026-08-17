@@ -30,3 +30,6 @@ Verification:
 
 Concerns:
 - Input normalization is heuristic-first and currently focused on `entity(field type, ...)` patterns; non-parenthesized formats are returned as warnings.
+
+Commit hash(es):
+- 776a10e9f8f791a33f2d7683622bd8e8f9da838f
