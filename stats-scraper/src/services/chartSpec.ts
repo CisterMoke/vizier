@@ -1,22 +1,7 @@
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
+import type * as Plotly from 'plotly.js'
 
-type PlotlyTrace = {
-  type: 'bar' | 'pie' | 'scatter'
-  mode?: 'lines+markers'
-  x?: unknown[]
-  y?: unknown[]
-  labels?: unknown[]
-  values?: unknown[]
-}
-
-type PlotlySpec = {
-  data: PlotlyTrace[]
-  layout: {
-    title: string
-  }
-}
-
-const inferChartType = (insight: InsightCandidate): PlotlyTrace['type'] => {
+const inferChartType = (insight: InsightCandidate): 'bar' | 'pie' | 'scatter' => {
   const text = `${insight.title} ${insight.summary}`.toLowerCase()
 
   if (text.includes('pie') || text.includes('share') || text.includes('proportion')) {
@@ -30,7 +15,10 @@ const inferChartType = (insight: InsightCandidate): PlotlyTrace['type'] => {
   return 'scatter'
 }
 
-export const buildPlotlySpec = (insight: InsightCandidate, dataset: GeneratedDataset): PlotlySpec => {
+export const buildPlotlySpec = (
+  insight: InsightCandidate,
+  dataset: GeneratedDataset
+): { data: Plotly.Data[]; layout: Partial<Plotly.Layout> } => {
   const xColumn = dataset.columns[0]
   const yColumn = dataset.columns[1] ?? dataset.columns[0]
   const x = dataset.rows.map((row) => row[xColumn])
@@ -57,4 +45,4 @@ export const buildPlotlySpec = (insight: InsightCandidate, dataset: GeneratedDat
   }
 }
 
-export type { PlotlySpec, PlotlyTrace }
+export type PlotlySpec = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> }

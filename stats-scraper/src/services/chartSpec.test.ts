@@ -1,5 +1,6 @@
 import { buildPlotlySpec } from './chartSpec'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
+import type * as Plotly from 'plotly.js'
 
 const mockBarInsight: InsightCandidate = {
   id: 'ins-1',
@@ -21,4 +22,13 @@ const mockDataset: GeneratedDataset = {
 it('maps bar chart intent to a bar trace', () => {
   const spec = buildPlotlySpec(mockBarInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('bar')
+})
+
+it('returns the required plotly contract shape', () => {
+  const spec = buildPlotlySpec(mockBarInsight, mockDataset)
+
+  expectTypeOf(spec).toMatchTypeOf<{
+    data: Plotly.Data[]
+    layout: Partial<Plotly.Layout>
+  }>()
 })
