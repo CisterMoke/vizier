@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/preact'
 import { App } from './app'
 
-it('renders schema input heading', () => {
+it('renders app scaffold heading', () => {
   render(<App />)
-  expect(screen.getByText(/schema/i)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /get started/i })).toBeInTheDocument()
 })
