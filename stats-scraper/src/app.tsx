@@ -2,10 +2,12 @@ import { useState } from 'preact/hooks'
 import { SchemaInputPanel } from './components/SchemaInputPanel'
 import { SchemaPreviewEditor } from './components/SchemaPreviewEditor'
 import { InsightControls } from './components/InsightControls'
+import { ChartGrid } from './components/ChartGrid'
 import { normalizeSchema } from './services/schemaNormalize'
 import { createBrowserLLMProvider } from './services/llmProvider'
 import { generateInsightCandidates } from './services/insightGeneration'
-import type { CanonicalSchema, InsightCandidate } from './domain/types'
+import { generateMockDataset } from './services/mockData'
+import type { CanonicalSchema, GeneratedDataset, InsightCandidate } from './domain/types'
 import './app.css'
 
 const EMPTY_SCHEMA: CanonicalSchema = {
@@ -19,6 +21,7 @@ export function App() {
   const [apiKey, setApiKey] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [insights, setInsights] = useState<InsightCandidate[]>([])
+  const [datasetsByInsightId, setDatasetsByInsightId] = useState<Record<string, GeneratedDataset>>({})
   const [generationError, setGenerationError] = useState<string | null>(null)
 
   const handleGenerateInsights = async () => {
@@ -32,12 +35,40 @@ export function App() {
     try {
       const provider = createBrowserLLMProvider(apiKey)
       const nextInsights = await generateInsightCandidates(schema, provider)
+      const nextDatasets = nextInsights.reduce<Record<string, GeneratedDataset>>((acc, insight, index) => {
+        acc[insight.id] = generateMockDataset(schema, insight, { seed: 1337 + index })
+        return acc
+      }, {})
+
       setInsights(nextInsights)
+      setDatasetsByInsightId(nextDatasets)
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : 'Failed to generate insights')
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleRegenerateCard = (insightId: string) => {
+    const insight = insights.find((item) => item.id === insightId)
+
+    if (!insight) {
+      return
+    }
+
+    setDatasetsByInsightId((current) => ({
+      ...current,
+      [insightId]: generateMockDataset(schema, insight, { seed: Date.now() })
+    }))
+  }
+
+  const handleDeleteCard = (insightId: string) => {
+    setInsights((current) => current.filter((insight) => insight.id !== insightId))
+    setDatasetsByInsightId((current) => {
+      const next = { ...current }
+      delete next[insightId]
+      return next
+    })
   }
 
   return (
@@ -89,6 +120,13 @@ export function App() {
           </ul>
         </section>
       ) : null}
+
+      <ChartGrid
+        insights={insights}
+        datasetsByInsightId={datasetsByInsightId}
+        onRegenerate={handleRegenerateCard}
+        onDelete={handleDeleteCard}
+      />
     </main>
   )
 }
