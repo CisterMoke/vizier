@@ -62,7 +62,7 @@ Tests:
 - `src/services/schemaNormalize.test.ts`: added `keeps decimal precision types intact when splitting fields`.
 
 Commit hash(es):
-- PENDING
+- 00f66f89e80e54ba8e14fc314d86043939f27285
 
 Concerns:
 - Entity extraction remains heuristic and top-level text-oriented; it handles nested parentheses in field types but is not a full SQL parser.
