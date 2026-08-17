@@ -21,27 +21,43 @@ export const buildPlotlySpec = (
 ): { data: Plotly.Data[]; layout: Partial<Plotly.Layout> } => {
   const xColumn = dataset.columns[0]
   const yColumn = dataset.columns[1] ?? dataset.columns[0]
-  const x = dataset.rows.map((row) => row[xColumn])
-  const y = dataset.rows.map((row) => row[yColumn])
+  const toDatum = (value: unknown): Plotly.Datum => {
+    if (typeof value === 'number' || typeof value === 'string') {
+      return value
+    }
+
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false'
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString()
+    }
+
+    return String(value)
+  }
+
+  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
+  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
   const chartType = inferChartType(insight)
 
   if (chartType === 'pie') {
     return {
       data: [{ type: 'pie', labels: x, values: y }],
-      layout: { title: insight.title }
+      layout: { title: { text: insight.title } }
     }
   }
 
   if (chartType === 'bar') {
     return {
       data: [{ type: 'bar', x, y }],
-      layout: { title: insight.title }
+      layout: { title: { text: insight.title } }
     }
   }
 
   return {
     data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
-    layout: { title: insight.title }
+    layout: { title: { text: insight.title } }
   }
 }
 
