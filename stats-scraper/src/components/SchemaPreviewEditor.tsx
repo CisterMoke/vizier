@@ -14,6 +14,7 @@ export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorPro
 
   useEffect(() => {
     setDraft(serialized)
+    setJsonError(null)
   }, [serialized])
 
   const handleInput = (event: Event) => {

@@ -95,3 +95,32 @@ Commit hash(es):
 
 Concerns:
 - Editor now prioritizes external schema updates when props change, which intentionally replaces any in-progress local draft at that moment.
+
+---
+
+Fix status: DONE
+
+Reviewer finding addressed:
+- New breakage: cleared stale `jsonError` when external schema sync resets editor draft to valid serialized JSON.
+
+Files changed (fix pass 3):
+- stats-scraper/src/components/SchemaPreviewEditor.tsx
+- stats-scraper/src/components/schemaUi.test.tsx
+
+Commands run with outcomes:
+1. `npm run test -- src/components/schemaUi.test.tsx`
+   - Outcome: FAILED as expected with new regression test (`clears stale parse error when external schema update resets draft to valid JSON`) reproducing lingering alert.
+2. Implemented focused fix to clear `jsonError` inside external-serialization sync effect.
+3. `npm run test -- src/components/schemaUi.test.tsx`
+   - Outcome: PASSED (5 tests).
+4. `npm run test`
+   - Outcome: PASSED (4 test files, 9 tests).
+
+Tests:
+- `src/components/schemaUi.test.tsx`: added `clears stale parse error when external schema update resets draft to valid JSON`.
+
+Commit hash(es):
+- PENDING
+
+Concerns:
+- External schema updates remain authoritative and will clear both local draft text and local parse error state on sync.

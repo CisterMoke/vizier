@@ -87,3 +87,27 @@ it('syncs textarea content to external schema updates after local edits', () => 
 
   expect(editor.value).toContain('"customers"')
 })
+
+it('clears stale parse error when external schema update resets draft to valid JSON', () => {
+  const onChange = vi.fn()
+  const { rerender } = render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+
+  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+
+  fireEvent.input(editor, {
+    target: { value: '{"entities": [' }
+  })
+
+  expect(screen.getByRole('alert')).toBeInTheDocument()
+
+  const externalSchema: CanonicalSchema = {
+    entities: [{ name: 'invoices', fields: [{ name: 'id', type: 'number', nullable: false }] }],
+    relationships: [],
+    warnings: []
+  }
+
+  rerender(<SchemaPreviewEditor schema={externalSchema} onChange={onChange} />)
+
+  expect(editor.value).toContain('"invoices"')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
