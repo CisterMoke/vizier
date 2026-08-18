@@ -1,3 +1,4 @@
+import { Badge, Button, Card, Group, List, Stack, Text, Title } from '@mantine/core'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
 import { buildPlotlySpec } from '../services/chartSpec'
@@ -14,43 +15,68 @@ interface ChartCardProps {
 
 export function ChartCard({ insight, dataset, onRegenerate, onDelete }: ChartCardProps) {
   const spec = buildPlotlySpec(insight, dataset)
-  const trace = spec.data[0]
 
   return (
-    <article data-testid="chart-card">
-      <h3>{insight.title}</h3>
-      <p>{insight.summary}</p>
-      <p>Confidence: {(insight.confidence * 100).toFixed(0)}%</p>
-      <p>
-        Chart type: <strong>{trace?.type ?? 'unknown'}</strong>
-      </p>
-      <p>
-        Data source: {dataset.name} ({dataset.rows.length} rows)
-      </p>
-      <p>{insight.hypothesis}</p>
-      <p>Metric logic: {insight.metricDescription}</p>
-      {insight.assumptions.length > 0 ? (
-        <ul>
-          {insight.assumptions.map((assumption) => (
-            <li key={assumption}>{assumption}</li>
-          ))}
-        </ul>
-      ) : null}
-      <Plot
-        data={spec.data}
-        layout={{ ...spec.layout, autosize: true }}
-        config={{ responsive: true, displaylogo: false }}
-        style={{ width: '100%', height: '320px' }}
-        useResizeHandler
-      />
-      <div>
-        <button type="button" onClick={() => onRegenerate(insight.id)}>
-          Regenerate
-        </button>
-        <button type="button" onClick={() => onDelete(insight.id)}>
-          Delete
-        </button>
-      </div>
-    </article>
+    <Card
+      data-testid="chart-card"
+      withBorder
+      radius="lg"
+      padding="lg"
+      className="bg-white/85 backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+    >
+      <Stack gap="md">
+        <div>
+          <Group justify="space-between" align="flex-start">
+            <Title order={4}>{insight.title}</Title>
+            <Badge variant="light">{Math.round(insight.confidence * 100)}% confidence</Badge>
+          </Group>
+          <Text c="dimmed" size="sm" mt={4}>
+            {insight.summary}
+          </Text>
+        </div>
+
+        <Text size="sm">
+          <strong>Hypothesis:</strong> {insight.hypothesis}
+        </Text>
+        <Text size="sm">
+          <strong>Metric:</strong> {insight.metricDescription}
+        </Text>
+
+        {insight.assumptions.length > 0 ? (
+          <List size="sm" withPadding>
+            {insight.assumptions.map((assumption) => (
+              <List.Item key={assumption}>{assumption}</List.Item>
+            ))}
+          </List>
+        ) : null}
+
+        <Text size="xs" c="dimmed">
+          Data source: {dataset.name} ({dataset.rows.length} rows)
+        </Text>
+
+        <Plot
+          data={spec.data}
+          layout={{
+            ...spec.layout,
+            autosize: true,
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            margin: { l: 32, r: 16, b: 40, t: 40 }
+          }}
+          config={{ responsive: true, displaylogo: false }}
+          style={{ width: '100%', height: '320px' }}
+          useResizeHandler
+        />
+
+        <Group justify="flex-end">
+          <Button variant="default" type="button" onClick={() => onRegenerate(insight.id)}>
+            Regenerate
+          </Button>
+          <Button color="red" variant="light" type="button" onClick={() => onDelete(insight.id)}>
+            Delete
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
   )
 }

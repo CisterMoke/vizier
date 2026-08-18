@@ -1,27 +1,24 @@
+import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { useState } from 'preact/hooks'
+import { ChartGrid } from './components/ChartGrid'
+import { InsightControls } from './components/InsightControls'
 import { SchemaInputPanel } from './components/SchemaInputPanel'
 import { SchemaPreviewEditor } from './components/SchemaPreviewEditor'
-import { InsightControls } from './components/InsightControls'
-import { ChartGrid } from './components/ChartGrid'
-import { normalizeSchema } from './services/schemaNormalize'
-import { createBrowserLLMProvider } from './services/llmProvider'
-import { generateInsightCandidates } from './services/insightGeneration'
-import { generateMockDataset } from './services/mockData'
 import { FALLBACK_INSIGHTS, SAMPLE_SCHEMAS } from './data/sampleSchemas'
 import { downloadExportReport } from './lib/exportReport'
+import { generateInsightCandidates } from './services/insightGeneration'
+import { createBrowserLLMProvider } from './services/llmProvider'
+import { generateMockDataset } from './services/mockData'
 import { useWorkspaceStore } from './store/workspaceStore'
-import './app.css'
+
+const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to run AI schema mapping.'
 
 export function App() {
   const workspace = useWorkspaceStore()
   const [apiKey, setApiKey] = useState('')
+  const [isMapping, setIsMapping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
-
-  const applyRawSchema = (rawText: string) => {
-    workspace.setRawSchema(rawText)
-    workspace.setCanonicalSchema(normalizeSchema(rawText))
-  }
 
   const buildFallbackDatasets = (fallbackInsights = FALLBACK_INSIGHTS) => {
     fallbackInsights.forEach((insight, index) => {
@@ -30,6 +27,31 @@ export function App() {
         generateMockDataset(workspace.canonicalSchema, insight, { seed: workspace.demoSeed + index })
       )
     })
+  }
+
+  const handleMapSchema = async (rawText: string) => {
+    workspace.setRawSchema(rawText)
+    workspace.setInsights([])
+    setGenerationError(null)
+
+    if (apiKey.trim().length === 0) {
+      setGenerationError(API_KEY_REQUIRED_MESSAGE)
+      return
+    }
+
+    setIsMapping(true)
+
+    try {
+      const provider = createBrowserLLMProvider(apiKey)
+      const canonical = await provider.mapCanonicalSchema(rawText)
+      workspace.setCanonicalSchema(canonical)
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? `Schema mapping failed: ${error.message}` : 'Schema mapping failed.'
+      )
+    } finally {
+      setIsMapping(false)
+    }
   }
 
   const handleGenerateInsights = async () => {
@@ -96,68 +118,57 @@ export function App() {
   }
 
   return (
-    <main>
-      <h1>Schema Normalization Studio</h1>
-      <p>Paste freeform schema text, normalize it, and repair JSON directly.</p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe,_transparent_45%),radial-gradient(circle_at_bottom_right,_#fef3c7,_transparent_45%),#f8fafc] py-10">
+      <Container size="xl">
+        <Stack gap="lg">
+          <Paper withBorder radius="xl" p="xl" className="bg-white/85 backdrop-blur-md shadow-md">
+            <Group justify="space-between" align="flex-start" wrap="wrap">
+              <div>
+                <Badge variant="light" color="cyan" mb={8}>
+                  Hackathon Mode
+                </Badge>
+                <Title order={1}>Analytics Idea Lab</Title>
+                <Text c="dimmed" mt={6}>
+                  Map free text into canonical schema, generate hypotheses, and visualize mock analytics instantly.
+                </Text>
+              </div>
+              <Button
+                type="button"
+                onClick={handleExportReport}
+                disabled={workspace.insights.length === 0}
+                variant="filled"
+              >
+                Export report
+              </Button>
+            </Group>
+          </Paper>
 
-      <SchemaInputPanel onNormalize={applyRawSchema} sampleSchemas={SAMPLE_SCHEMAS} />
-      <SchemaPreviewEditor schema={workspace.canonicalSchema} onChange={workspace.setCanonicalSchema} />
-      <InsightControls
-        apiKey={apiKey}
-        onApiKeyChange={setApiKey}
-        onGenerate={handleGenerateInsights}
-        isGenerating={isGenerating}
-        disabled={workspace.canonicalSchema.entities.length === 0}
-      />
+          {generationError ? (
+            <Alert role="alert" color="orange">
+              {generationError}
+            </Alert>
+          ) : null}
 
-      {generationError ? <p role="alert">{generationError}</p> : null}
+          <SchemaInputPanel onMapSchema={handleMapSchema} isMapping={isMapping} sampleSchemas={SAMPLE_SCHEMAS} />
 
-      {workspace.canonicalSchema.warnings.length > 0 ? (
-        <section>
-          <h2>Warnings</h2>
-          <ul>
-            {workspace.canonicalSchema.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+          <SchemaPreviewEditor schema={workspace.canonicalSchema} onChange={workspace.setCanonicalSchema} />
 
-      {workspace.canonicalSchema.entities.length > 0 ? (
-        <section>
-          <h2>Detected entities</h2>
-          <ul>
-            {workspace.canonicalSchema.entities.map((entity) => (
-              <li key={entity.name}>{entity.name}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+          <InsightControls
+            apiKey={apiKey}
+            onApiKeyChange={setApiKey}
+            onGenerate={handleGenerateInsights}
+            isGenerating={isGenerating}
+            disabled={workspace.canonicalSchema.entities.length === 0}
+          />
 
-      {workspace.insights.length > 0 ? (
-        <section>
-          <h2>Insight candidates</h2>
-          <ul>
-            {workspace.insights.map((insight) => (
-              <li key={insight.id}>{insight.title}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section>
-        <h2>Export</h2>
-        <button type="button" onClick={handleExportReport} disabled={workspace.insights.length === 0}>
-          Export report
-        </button>
-      </section>
-
-      <ChartGrid
-        insights={workspace.insights}
-        datasetsByInsightId={workspace.datasetsByInsightId}
-        onRegenerate={handleRegenerateCard}
-        onDelete={handleDeleteCard}
-      />
-    </main>
+          <ChartGrid
+            insights={workspace.insights}
+            datasetsByInsightId={workspace.datasetsByInsightId}
+            onRegenerate={handleRegenerateCard}
+            onDelete={handleDeleteCard}
+          />
+        </Stack>
+      </Container>
+    </div>
   )
 }

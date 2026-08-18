@@ -1,3 +1,4 @@
+import { Alert, Paper, Stack, Text, Textarea, Title } from '@mantine/core'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { parseCanonicalSchema } from '../domain/schemas'
 import type { CanonicalSchema } from '../domain/types'
@@ -31,11 +32,27 @@ export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorPro
   }
 
   return (
-    <section>
-      <h2>Schema Preview</h2>
-      <label for="canonical-schema-json">Canonical schema JSON</label>
-      <textarea id="canonical-schema-json" rows={16} value={draft} onInput={handleInput} />
-      {jsonError ? <p role="alert">{jsonError}</p> : null}
-    </section>
+    <Paper withBorder radius="lg" p="lg" className="bg-white/80 backdrop-blur-sm shadow-sm">
+      <Stack gap="md">
+        <div>
+          <Title order={3}>Canonical Schema</Title>
+          <Text c="dimmed" size="sm">
+            Review and edit normalized JSON directly.
+          </Text>
+        </div>
+
+        <Textarea
+          id="canonical-schema-json"
+          label="Canonical schema JSON"
+          minRows={14}
+          autosize
+          value={draft}
+          onInput={handleInput}
+          className="font-mono"
+        />
+
+        {jsonError ? <Alert color="red" role="alert">{jsonError}</Alert> : null}
+      </Stack>
+    </Paper>
   )
 }

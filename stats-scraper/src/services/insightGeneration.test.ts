@@ -9,6 +9,7 @@ const mockSchema: CanonicalSchema = {
 
 it('returns validated insight candidates from provider output', async () => {
   const provider = {
+    mapCanonicalSchema: async (): Promise<CanonicalSchema> => mockSchema,
     generateInsights: async (): Promise<InsightCandidate[]> => [
       {
         id: 'i1',

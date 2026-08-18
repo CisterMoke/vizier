@@ -13,7 +13,8 @@
 
 - Never commit real LLM API keys in source, tests, docs, or `.env` files.
 - Enter API keys only in the local app form during a session.
-- If no API key is provided, the app intentionally switches to offline fallback insight generation.
+- Schema canonicalization is LLM-driven and requires an API key.
+- Insight generation falls back to built-in offline ideas if keyed LLM generation fails.
 
 ## Demo seed and fallback behavior
 

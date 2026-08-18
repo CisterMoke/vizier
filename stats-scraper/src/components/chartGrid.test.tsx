@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/preact'
+import { MantineProvider } from '@mantine/core'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import { ChartGrid } from './ChartGrid'
 
@@ -38,7 +39,14 @@ it('renders chart cards and exposes card actions', () => {
   const onDelete = vi.fn()
 
   render(
-    <ChartGrid insights={insights} datasetsByInsightId={datasets} onRegenerate={onRegenerate} onDelete={onDelete} />
+    <MantineProvider>
+      <ChartGrid
+        insights={insights}
+        datasetsByInsightId={datasets}
+        onRegenerate={onRegenerate}
+        onDelete={onDelete}
+      />
+    </MantineProvider>
   )
 
   expect(screen.getByRole('heading', { name: /revenue by category/i })).toBeInTheDocument()

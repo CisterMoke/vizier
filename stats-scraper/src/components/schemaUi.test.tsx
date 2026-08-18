@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/preact'
+import { MantineProvider } from '@mantine/core'
 import type { CanonicalSchema } from '../domain/types'
 import { SchemaInputPanel } from './SchemaInputPanel'
 import { SchemaPreviewEditor } from './SchemaPreviewEditor'
@@ -10,21 +11,25 @@ const sampleSchema: CanonicalSchema = {
   warnings: []
 }
 
-it('submits freeform schema text through the normalize callback', () => {
-  const onNormalize = vi.fn()
-  render(<SchemaInputPanel onNormalize={onNormalize} />)
+const renderWithMantine = (node: JSX.Element) => render(<MantineProvider>{node}</MantineProvider>)
+
+it('submits freeform schema text through the mapping callback', () => {
+  const onMapSchema = vi.fn().mockResolvedValue(undefined)
+  renderWithMantine(<SchemaInputPanel onMapSchema={onMapSchema} isMapping={false} />)
 
   fireEvent.input(screen.getByLabelText(/schema text/i), {
     target: { value: 'orders(id int)' }
   })
-  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
+  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
-  expect(onNormalize).toHaveBeenCalledWith('orders(id int)')
+  expect(onMapSchema).toHaveBeenCalledWith('orders(id int)')
 })
 
 it('allows selecting multiple sample schemas and inserting them into schema text', () => {
-  const onNormalize = vi.fn()
-  render(<SchemaInputPanel onNormalize={onNormalize} sampleSchemas={SAMPLE_SCHEMAS} />)
+  const onMapSchema = vi.fn().mockResolvedValue(undefined)
+  renderWithMantine(
+    <SchemaInputPanel onMapSchema={onMapSchema} isMapping={false} sampleSchemas={SAMPLE_SCHEMAS} />
+  )
 
   fireEvent.click(screen.getByLabelText(/retail orders/i))
   fireEvent.click(screen.getByLabelText(/product usage/i))
@@ -34,13 +39,13 @@ it('allows selecting multiple sample schemas and inserting them into schema text
   expect(textarea.value).toContain('orders(id int, customer_id int, total decimal, created_at timestamp)')
   expect(textarea.value).toContain('events(id int, user_id int, event_name text, occurred_at timestamp)')
 
-  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
-  expect(onNormalize).toHaveBeenCalledWith(textarea.value)
+  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
+  expect(onMapSchema).toHaveBeenCalledWith(textarea.value)
 })
 
 it('emits canonical schema changes from the JSON preview editor', () => {
   const onChange = vi.fn()
-  render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+  renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
   fireEvent.input(screen.getByLabelText(/canonical schema json/i), {
     target: {
@@ -57,7 +62,7 @@ it('emits canonical schema changes from the JSON preview editor', () => {
 
 it('keeps local draft JSON when edit is invalid and only emits when valid', () => {
   const onChange = vi.fn()
-  render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+  renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
   const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
 
@@ -84,7 +89,7 @@ it('keeps local draft JSON when edit is invalid and only emits when valid', () =
 
 it('syncs textarea content to external schema updates after local edits', () => {
   const onChange = vi.fn()
-  const { rerender } = render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+  const { rerender } = renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
   const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
 
@@ -100,14 +105,18 @@ it('syncs textarea content to external schema updates after local edits', () => 
     warnings: []
   }
 
-  rerender(<SchemaPreviewEditor schema={externalSchema} onChange={onChange} />)
+  rerender(
+    <MantineProvider>
+      <SchemaPreviewEditor schema={externalSchema} onChange={onChange} />
+    </MantineProvider>
+  )
 
   expect(editor.value).toContain('"customers"')
 })
 
 it('clears stale parse error when external schema update resets draft to valid JSON', () => {
   const onChange = vi.fn()
-  const { rerender } = render(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
+  const { rerender } = renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
   const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
 
@@ -123,7 +132,11 @@ it('clears stale parse error when external schema update resets draft to valid J
     warnings: []
   }
 
-  rerender(<SchemaPreviewEditor schema={externalSchema} onChange={onChange} />)
+  rerender(
+    <MantineProvider>
+      <SchemaPreviewEditor schema={externalSchema} onChange={onChange} />
+    </MantineProvider>
+  )
 
   expect(editor.value).toContain('"invoices"')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()

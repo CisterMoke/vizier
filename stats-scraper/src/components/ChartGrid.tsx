@@ -1,3 +1,4 @@
+import { SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import { ChartCard } from './ChartCard'
 
@@ -14,25 +15,33 @@ export function ChartGrid({ insights, datasetsByInsightId, onRegenerate, onDelet
   }
 
   return (
-    <section>
-      <h2>Chart cards</h2>
-      {insights.map((insight) => {
-        const dataset = datasetsByInsightId[insight.id]
+    <Stack gap="md">
+      <div>
+        <Title order={2}>Insight Candidates</Title>
+        <Text c="dimmed" size="sm">
+          Interactive chart cards generated from your schema.
+        </Text>
+      </div>
 
-        if (!dataset) {
-          return null
-        }
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+        {insights.map((insight) => {
+          const dataset = datasetsByInsightId[insight.id]
 
-        return (
-          <ChartCard
-            key={insight.id}
-            insight={insight}
-            dataset={dataset}
-            onRegenerate={onRegenerate}
-            onDelete={onDelete}
-          />
-        )
-      })}
-    </section>
+          if (!dataset) {
+            return null
+          }
+
+          return (
+            <ChartCard
+              key={insight.id}
+              insight={insight}
+              dataset={dataset}
+              onRegenerate={onRegenerate}
+              onDelete={onDelete}
+            />
+          )
+        })}
+      </SimpleGrid>
+    </Stack>
   )
 }

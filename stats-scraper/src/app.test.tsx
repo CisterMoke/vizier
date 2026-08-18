@@ -1,96 +1,73 @@
-import { fireEvent, render, screen } from '@testing-library/preact'
+import { fireEvent, render, screen, waitFor } from '@testing-library/preact'
+import { MantineProvider } from '@mantine/core'
 import { App } from './app'
 
 vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
 }))
 
-it('renders schema normalization studio shell', () => {
-  render(<App />)
+const mapCanonicalSchemaMock = vi.fn()
+const generateInsightsMock = vi.fn()
 
-  expect(screen.getByRole('heading', { name: /schema normalization studio/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /normalize schema/i })).toBeInTheDocument()
+vi.mock('./services/llmProvider', () => ({
+  createBrowserLLMProvider: () => ({
+    mapCanonicalSchema: mapCanonicalSchemaMock,
+    generateInsights: generateInsightsMock
+  })
+}))
+
+beforeEach(() => {
+  mapCanonicalSchemaMock.mockReset()
+  generateInsightsMock.mockReset()
 })
 
-it('renders in-memory llm controls with generate action', () => {
-  render(<App />)
+const renderApp = () => render(<MantineProvider><App /></MantineProvider>)
 
-  expect(screen.getByLabelText(/llm api key/i)).toBeInTheDocument()
-  const generateButton = screen.getByRole('button', { name: /generate insights/i })
-  expect(generateButton).toBeInTheDocument()
-  expect(generateButton).toBeDisabled()
+it('renders analytics idea lab shell', () => {
+  renderApp()
+
+  expect(screen.getByRole('heading', { name: /analytics idea lab/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /map schema with ai/i })).toBeInTheDocument()
 })
 
-it('generates fallback insights and enables report export without an api key', async () => {
-  render(<App />)
+it('requires api key for schema mapping', async () => {
+  renderApp()
 
-  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
+  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
-  const generateButton = screen.getByRole('button', { name: /generate insights/i })
-  expect(generateButton).toBeEnabled()
+  expect(await screen.findByRole('alert')).toHaveTextContent(/provide an api key/i)
+  expect(mapCanonicalSchemaMock).not.toHaveBeenCalled()
+})
 
-  fireEvent.click(generateButton)
+it('maps schema with llm and generates chart cards', async () => {
+  mapCanonicalSchemaMock.mockResolvedValue({
+    entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
+    relationships: [],
+    warnings: []
+  })
+
+  generateInsightsMock.mockResolvedValue([
+    {
+      id: 'insight-1',
+      title: 'Orders trend',
+      summary: 'Orders over time',
+      confidence: 0.82,
+      hypothesis: 'Orders climb weekly',
+      metricDescription: 'Weekly order count',
+      chartRecommendation: 'line',
+      assumptions: ['created_at is present']
+    }
+  ])
+
+  renderApp()
+
+  fireEvent.input(screen.getByLabelText(/llm api key/i), { target: { value: 'demo-key' } })
+  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
+
+  await waitFor(() => expect(mapCanonicalSchemaMock).toHaveBeenCalled())
+
+  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
 
   expect(await screen.findByRole('heading', { name: /insight candidates/i })).toBeInTheDocument()
-  expect(screen.getAllByTestId('chart-card')).toHaveLength(3)
-  expect(screen.getByRole('button', { name: /export report/i })).toBeInTheDocument()
-})
-
-it('falls back to offline insights when keyed provider request fails', async () => {
-  const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response('bad request', {
-      status: 400,
-      headers: { 'Content-Type': 'text/plain' }
-    })
-  )
-
-  render(<App />)
-
-  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
-  fireEvent.input(screen.getByLabelText(/llm api key/i), {
-    target: { value: 'test-key' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
-
-  expect(await screen.findByRole('alert')).toHaveTextContent(/loaded offline fallback insights/i)
-
-  fetchSpy.mockRestore()
-})
-
-it('exports report as a downloadable json artifact', async () => {
-  const clickSpy = vi.fn()
-  const originalCreateElement = document.createElement.bind(document)
-  const originalCreateObjectUrl = URL.createObjectURL
-  const originalRevokeObjectUrl = URL.revokeObjectURL
-
-  URL.createObjectURL = vi.fn(() => 'blob:report')
-  URL.revokeObjectURL = vi.fn()
-
-  const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-    if (tagName.toLowerCase() === 'a') {
-      return {
-        href: '',
-        download: '',
-        click: clickSpy
-      } as unknown as HTMLAnchorElement
-    }
-
-    return originalCreateElement(tagName)
-  })
-
-  render(<App />)
-
-  fireEvent.click(screen.getByRole('button', { name: /normalize schema/i }))
-  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
-  await screen.findByRole('heading', { name: /insight candidates/i })
-
-  fireEvent.click(screen.getByRole('button', { name: /export report/i }))
-
-  expect(clickSpy).toHaveBeenCalled()
-  expect(URL.createObjectURL).toHaveBeenCalled()
-  expect(URL.revokeObjectURL).toHaveBeenCalled()
-
-  createElementSpy.mockRestore()
-  URL.createObjectURL = originalCreateObjectUrl
-  URL.revokeObjectURL = originalRevokeObjectUrl
+  expect(screen.getAllByTestId('chart-card')).toHaveLength(1)
 })

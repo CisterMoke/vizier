@@ -1,3 +1,5 @@
+import { createLLM } from '@node-llm/core'
+import { canonicalSchemaSchema, insightEnvelopeSchema, parseCanonicalSchema, parseInsightEnvelope } from '../domain/schemas'
 import type { CanonicalSchema, InsightCandidate } from '../domain/types'
 
 export interface InsightPromptInput {
@@ -6,96 +8,57 @@ export interface InsightPromptInput {
 }
 
 export interface LLMProvider {
-  generateInsights(input: InsightPromptInput): Promise<InsightCandidate[]>
+  mapCanonicalSchema: (rawText: string) => Promise<CanonicalSchema>
+  generateInsights: (input: InsightPromptInput) => Promise<InsightCandidate[]>
 }
 
-const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/responses'
+const MAP_SCHEMA_PROMPT =
+  'Map free-text schema descriptions into canonical JSON with entities, fields, relationships, and warnings. Only include relationships with explicit evidence from the text.'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+const INSIGHT_PROMPT =
+  'Generate analytics hypotheses from the canonical schema. Return practical hackathon-ready ideas with concise reasoning and chart recommendations.'
 
-const SYSTEM_PROMPT =
-  'Generate insight candidates for analytics chart cards. Return strict JSON with an insights array containing id, title, summary, confidence (0-1), hypothesis, metricDescription, chartRecommendation, and assumptions.'
-
-const extractResponseText = (payload: unknown): string | null => {
-  if (!isRecord(payload)) {
-    return null
+const getDataFromResponse = (response: unknown): unknown => {
+  if (
+    typeof response === 'object' &&
+    response !== null &&
+    'data' in response &&
+    (response as { data?: unknown }).data !== undefined
+  ) {
+    return (response as { data: unknown }).data
   }
 
-  if (typeof payload.output_text === 'string') {
-    return payload.output_text
-  }
-
-  if (!Array.isArray(payload.output)) {
-    return null
-  }
-
-  for (const item of payload.output) {
-    if (!isRecord(item) || !Array.isArray(item.content)) {
-      continue
-    }
-
-    for (const contentItem of item.content) {
-      if (isRecord(contentItem) && typeof contentItem.text === 'string') {
-        return contentItem.text
-      }
-    }
-  }
-
-  return null
+  return response
 }
 
-const extractItems = (payload: unknown): InsightCandidate[] => {
-  if (Array.isArray(payload)) {
-    return payload as InsightCandidate[]
-  }
+export const createBrowserLLMProvider = (apiKey: string): LLMProvider => {
+  const llm = createLLM({
+    provider: 'openai',
+    openaiApiKey: apiKey
+  })
 
-  if (isRecord(payload) && Array.isArray(payload.insights)) {
-    return payload.insights as InsightCandidate[]
-  }
+  return {
+    mapCanonicalSchema: async (rawText: string): Promise<CanonicalSchema> => {
+      const response = await llm
+        .chat('gpt-5.4-nano')
+        .withSchema(canonicalSchemaSchema as unknown as Record<string, unknown>)
+        .withInstructions(MAP_SCHEMA_PROMPT)
+        .ask(`Normalize this schema description into canonical JSON:\n\n${rawText}`)
 
-  const responseText = extractResponseText(payload)
+      return parseCanonicalSchema(getDataFromResponse(response))
+    },
+    generateInsights: async (input: InsightPromptInput): Promise<InsightCandidate[]> => {
+      const response = await llm
+        .chat('gpt-5.4-nano')
+        .withSchema(insightEnvelopeSchema as unknown as Record<string, unknown>)
+        .withInstructions(INSIGHT_PROMPT)
+        .ask(
+          `Given this canonical schema, produce up to ${input.maxIdeas} insight candidates:\n\n${JSON.stringify(
+            input.schema
+          )}`
+        )
 
-  if (responseText) {
-    const parsed = JSON.parse(responseText) as unknown
-    return extractItems(parsed)
-  }
-
-  throw new Error('Provider response did not include insight candidates')
-}
-
-export const createBrowserLLMProvider = (apiKey: string, endpoint = DEFAULT_ENDPOINT): LLMProvider => ({
-  generateInsights: async (input: InsightPromptInput): Promise<InsightCandidate[]> => {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        text: {
-          format: {
-            type: 'json_object'
-          }
-        },
-        input: [
-          {
-            role: 'system',
-            content: [{ type: 'input_text', text: SYSTEM_PROMPT }]
-          },
-          {
-            role: 'user',
-            content: [{ type: 'input_text', text: JSON.stringify(input) }]
-          }
-        ]
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`LLM request failed with status ${response.status}`)
+      return parseInsightEnvelope(getDataFromResponse(response)).insights
     }
-
-    return extractItems(await response.json())
   }
-})
+}
