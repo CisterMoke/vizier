@@ -54,7 +54,19 @@ test('end-to-end flow from schema paste to report export', async ({ page }) => {
               confidence: 0.84,
               hypothesis: 'Orders are increasing week by week.',
               metricDescription: 'Weekly order count.',
-              chartRecommendation: 'line',
+              chartSpec: {
+                mode: 'recipe',
+                chartType: 'line',
+                xAxis: { column: 'week', aggregation: 'none' },
+                yAxis: { column: 'order_count', aggregation: 'none' }
+              },
+              dataProfile: {
+                rowCount: 12,
+                columns: [
+                  { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
+                  { name: 'order_count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
+                ]
+              },
               assumptions: ['created_at timestamps are complete']
             }
           ]

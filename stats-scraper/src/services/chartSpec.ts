@@ -1,76 +1,113 @@
-import type { GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { ChartRecipe, ChartSpec, GeneratedDataset, InsightCandidate } from '../domain/types'
 import type * as Plotly from 'plotly.js'
 
-const inferChartType = (insight: InsightCandidate): 'bar' | 'pie' | 'scatter' => {
-  if (insight.chartRecommendation === 'bar') {
-    return 'bar'
+export type PlotlySpec = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> }
+
+const toDatum = (value: unknown): Plotly.Datum => {
+  if (typeof value === 'number' || typeof value === 'string') {
+    return value
   }
-
-  if (insight.chartRecommendation === 'pie') {
-    return 'pie'
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false'
   }
-
-  if (insight.chartRecommendation === 'line' || insight.chartRecommendation === 'scatter') {
-    return 'scatter'
+  if (value instanceof Date) {
+    return value.toISOString()
   }
+  return String(value)
+}
 
-  const text = `${insight.title} ${insight.summary}`.toLowerCase()
+const buildBarChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const xColumn = recipe.xAxis.column
+  const yColumn = recipe.yAxis.column
+  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
+  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
 
-  if (text.includes('pie') || text.includes('share') || text.includes('proportion')) {
-    return 'pie'
+  return {
+    data: [{ type: 'bar', x, y }],
+    layout: {
+      title: { text: title },
+      xaxis: { title: { text: recipe.xAxis.column } },
+      yaxis: { title: { text: recipe.yAxis.column } }
+    }
   }
+}
 
-  if (text.includes('bar') || text.includes('histogram') || text.includes('distribution')) {
-    return 'bar'
+const buildLineChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const xColumn = recipe.xAxis.column
+  const yColumn = recipe.yAxis.column
+  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
+  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
+
+  return {
+    data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
+    layout: {
+      title: { text: title },
+      xaxis: { title: { text: recipe.xAxis.column } },
+      yaxis: { title: { text: recipe.yAxis.column } }
+    }
   }
+}
 
-  return 'scatter'
+const buildPieChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const labelColumn = recipe.xAxis.column
+  const valueColumn = recipe.yAxis.column
+  const labels = dataset.rows.map((row) => toDatum(row[labelColumn]))
+  const values = dataset.rows.map((row) => toDatum(row[valueColumn]))
+
+  return {
+    data: [{ type: 'pie', labels, values }],
+    layout: { title: { text: title } }
+  }
+}
+
+const buildScatterChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const xColumn = recipe.xAxis.column
+  const yColumn = recipe.yAxis.column
+  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
+  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
+
+  return {
+    data: [{ type: 'scatter', mode: 'markers', x, y }],
+    layout: {
+      title: { text: title },
+      xaxis: { title: { text: recipe.xAxis.column } },
+      yaxis: { title: { text: recipe.yAxis.column } }
+    }
+  }
+}
+
+const buildCustomChart = (spec: ChartSpec & { mode: 'custom' }, _title: string): PlotlySpec => {
+  const layout = (spec.plotlyLayout as Partial<Plotly.Layout>) ?? {}
+  return {
+    data: (spec.plotlyData as Plotly.Data[]) ?? [],
+    layout: {
+      ...layout,
+      title: layout.title ?? { text: _title }
+    }
+  }
 }
 
 export const buildPlotlySpec = (
   insight: InsightCandidate,
   dataset: GeneratedDataset
-): { data: Plotly.Data[]; layout: Partial<Plotly.Layout> } => {
-  const xColumn = dataset.columns[0]
-  const yColumn = dataset.columns[1] ?? dataset.columns[0]
-  const toDatum = (value: unknown): Plotly.Datum => {
-    if (typeof value === 'number' || typeof value === 'string') {
-      return value
-    }
+): PlotlySpec => {
+  const spec = insight.chartSpec
+  const title = insight.title
 
-    if (typeof value === 'boolean') {
-      return value ? 'true' : 'false'
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString()
-    }
-
-    return String(value)
+  if (spec.mode === 'custom') {
+    return buildCustomChart(spec, title)
   }
 
-  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
-  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
-  const chartType = inferChartType(insight)
-
-  if (chartType === 'pie') {
-    return {
-      data: [{ type: 'pie', labels: x, values: y }],
-      layout: { title: { text: insight.title } }
-    }
-  }
-
-  if (chartType === 'bar') {
-    return {
-      data: [{ type: 'bar', x, y }],
-      layout: { title: { text: insight.title } }
-    }
-  }
-
-  return {
-    data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
-    layout: { title: { text: insight.title } }
+  switch (spec.chartType) {
+    case 'bar':
+      return buildBarChart(spec, dataset, title)
+    case 'line':
+      return buildLineChart(spec, dataset, title)
+    case 'pie':
+      return buildPieChart(spec, dataset, title)
+    case 'scatter':
+      return buildScatterChart(spec, dataset, title)
+    default:
+      return buildBarChart(spec, dataset, title)
   }
 }
-
-export type PlotlySpec = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> }

@@ -27,7 +27,19 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     confidence: 0.73,
     hypothesis: 'A small set of order tiers contributes most of total revenue.',
     metricDescription: 'Total revenue and order count grouped by order value tier.',
-    chartRecommendation: 'bar',
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'bar',
+      xAxis: { column: 'tier', aggregation: 'none' },
+      yAxis: { column: 'revenue', aggregation: 'sum' }
+    },
+    dataProfile: {
+      rowCount: 100,
+      columns: [
+        { name: 'tier', generator: 'category', categories: ['Low', 'Medium', 'High', 'Premium'] },
+        { name: 'revenue', generator: 'normal', mean: 500, stddev: 200, min: 0, max: 2000 }
+      ]
+    },
     assumptions: ['Order totals are numeric and non-null for most rows.']
   },
   {
@@ -37,7 +49,19 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     confidence: 0.78,
     hypothesis: 'Order volume varies by week with visible seasonality.',
     metricDescription: 'Weekly order count over the most recent periods.',
-    chartRecommendation: 'line',
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'line',
+      xAxis: { column: 'week', aggregation: 'none' },
+      yAxis: { column: 'order_count', aggregation: 'none' }
+    },
+    dataProfile: {
+      rowCount: 52,
+      columns: [
+        { name: 'week', generator: 'linear', start: 1, end: 52, step: 1 },
+        { name: 'order_count', generator: 'normal', mean: 300, stddev: 80, min: 50, max: 600 }
+      ]
+    },
     assumptions: ['Event timestamps are complete and correctly formatted.']
   },
   {
@@ -47,7 +71,19 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     confidence: 0.69,
     hypothesis: 'Top customer segments account for a disproportionate revenue share.',
     metricDescription: 'Percentage of total revenue by customer segment bucket.',
-    chartRecommendation: 'pie',
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'pie',
+      xAxis: { column: 'segment', aggregation: 'none' },
+      yAxis: { column: 'revenue', aggregation: 'sum' }
+    },
+    dataProfile: {
+      rowCount: 5,
+      columns: [
+        { name: 'segment', generator: 'category', categories: ['Enterprise', 'SMB', 'Startup', 'Individual', 'Retail'] },
+        { name: 'revenue', generator: 'uniform', min: 1000, max: 50000 }
+      ]
+    },
     assumptions: ['Customer identifiers can be grouped into stable segments.']
   }
 ]

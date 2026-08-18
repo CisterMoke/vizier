@@ -9,7 +9,19 @@ const mockBarInsight: InsightCandidate = {
   confidence: 0.91,
   hypothesis: 'Revenue varies by category.',
   metricDescription: 'Sum of revenue grouped by category.',
-  chartRecommendation: 'bar',
+  chartSpec: {
+    mode: 'recipe',
+    chartType: 'bar',
+    xAxis: { column: 'category', aggregation: 'none' },
+    yAxis: { column: 'revenue', aggregation: 'sum' }
+  },
+  dataProfile: {
+    rowCount: 4,
+    columns: [
+      { name: 'category', generator: 'category', categories: ['A', 'B', 'C', 'D'] },
+      { name: 'revenue', generator: 'uniform', min: 100, max: 500 }
+    ]
+  },
   assumptions: ['Category and revenue columns are present.']
 }
 
@@ -23,9 +35,71 @@ const mockDataset: GeneratedDataset = {
   ]
 }
 
-it('maps bar chart intent to a bar trace', () => {
+it('maps bar chart recipe to a bar trace', () => {
   const spec = buildPlotlySpec(mockBarInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('bar')
+})
+
+it('maps line chart recipe to a scatter trace with lines+markers', () => {
+  const lineInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'line',
+      xAxis: { column: 'week', aggregation: 'none' },
+      yAxis: { column: 'count', aggregation: 'none' }
+    }
+  }
+
+  const spec = buildPlotlySpec(lineInsight, mockDataset)
+  expect(spec.data[0]?.type).toBe('scatter')
+  expect((spec.data[0] as Plotly.Data).mode).toBe('lines+markers')
+})
+
+it('maps pie chart recipe to a pie trace', () => {
+  const pieInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'pie',
+      xAxis: { column: 'segment', aggregation: 'none' },
+      yAxis: { column: 'share', aggregation: 'sum' }
+    }
+  }
+
+  const spec = buildPlotlySpec(pieInsight, mockDataset)
+  expect(spec.data[0]?.type).toBe('pie')
+})
+
+it('maps scatter chart recipe to a scatter trace with markers only', () => {
+  const scatterInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'scatter',
+      xAxis: { column: 'orders', aggregation: 'none' },
+      yAxis: { column: 'revenue', aggregation: 'none' }
+    }
+  }
+
+  const spec = buildPlotlySpec(scatterInsight, mockDataset)
+  expect(spec.data[0]?.type).toBe('scatter')
+  expect((spec.data[0] as Plotly.Data).mode).toBe('markers')
+})
+
+it('passes through custom plotly spec directly', () => {
+  const customInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'custom',
+      plotlyData: [{ type: 'heatmap', z: [[1, 2], [3, 4]] }],
+      plotlyLayout: { title: { text: 'Custom Heatmap' } }
+    }
+  }
+
+  const spec = buildPlotlySpec(customInsight, mockDataset)
+  expect(spec.data[0]?.type).toBe('heatmap')
+  expect((spec.layout as { title: { text: string } }).title.text).toBe('Custom Heatmap')
 })
 
 it('returns the required plotly contract shape', () => {

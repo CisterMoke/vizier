@@ -25,8 +25,18 @@ export interface LLMProvider {
 const MAP_SCHEMA_PROMPT =
   'Map free-text schema descriptions into canonical JSON with entities, fields, relationships, and warnings. Only include relationships with explicit evidence from the text.'
 
-const INSIGHT_PROMPT =
-  'Generate analytics hypotheses from the canonical schema. Return practical hackathon-ready ideas with concise reasoning and chart recommendations.'
+const INSIGHT_PROMPT = `Generate analytics hypotheses from the canonical schema.
+For each insight, provide:
+- A chartSpec with mode "recipe" (preferred) specifying chartType (bar, line, pie, or scatter), xAxis and yAxis column names from the schema, and aggregation (sum, count, avg, or none).
+- For advanced cases, you may use mode "custom" with raw plotlyData and plotlyLayout.
+- A dataProfile specifying rowCount and column definitions. Each column must use one of these generators:
+  - "category": provide categories array (e.g. ["Electronics", "Clothing", "Home"])
+  - "normal": provide mean and stddev, optional min/max for clamping
+  - "uniform": provide min and max
+  - "linear": provide start, end, and step (use for time-like axes)
+  - "constant": provide value
+Column names in dataProfile should match the chartSpec axis columns so the chart can render correctly.
+Return practical hackathon-ready ideas with concise reasoning.`
 
 const createModel = (config: LLMProviderConfig) => {
   if (config.provider === 'google') {

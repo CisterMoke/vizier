@@ -53,7 +53,19 @@ it('uses mistral provider with structured output for insight generation', async 
           confidence: 0.8,
           hypothesis: 'Order volume has periodic patterns.',
           metricDescription: 'Weekly order count.',
-          chartRecommendation: 'line',
+          chartSpec: {
+            mode: 'recipe',
+            chartType: 'line',
+            xAxis: { column: 'week', aggregation: 'none' },
+            yAxis: { column: 'order_count', aggregation: 'none' }
+          },
+          dataProfile: {
+            rowCount: 52,
+            columns: [
+              { name: 'week', generator: 'linear', start: 1, end: 52, step: 1 },
+              { name: 'order_count', generator: 'normal', mean: 300, stddev: 80, min: 50, max: 600 }
+            ]
+          },
           assumptions: ['Timestamps are accurate.']
         }
       ]
@@ -64,6 +76,7 @@ it('uses mistral provider with structured output for insight generation', async 
   const insights = await llm.generateInsights({ schema, maxIdeas: 5 })
 
   expect(insights[0].id).toBe('ins-1')
-  expect(insights[0].chartRecommendation).toBe('line')
+  expect(insights[0].chartSpec.mode).toBe('recipe')
+  expect(insights[0].dataProfile.columns).toHaveLength(2)
   expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
 })

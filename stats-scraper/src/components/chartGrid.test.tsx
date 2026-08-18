@@ -17,7 +17,19 @@ const insights: InsightCandidate[] = [
     confidence: 0.88,
     hypothesis: 'Categories have uneven revenue distribution.',
     metricDescription: 'Sum of revenue by category.',
-    chartRecommendation: 'bar',
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'bar',
+      xAxis: { column: 'category', aggregation: 'none' },
+      yAxis: { column: 'revenue', aggregation: 'sum' }
+    },
+    dataProfile: {
+      rowCount: 4,
+      columns: [
+        { name: 'category', generator: 'category', categories: ['A', 'B', 'C', 'D'] },
+        { name: 'revenue', generator: 'uniform', min: 100, max: 500 }
+      ]
+    },
     assumptions: ['Revenue values are numeric and complete.']
   }
 ]

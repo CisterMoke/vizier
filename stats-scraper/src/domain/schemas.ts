@@ -26,6 +26,43 @@ export const canonicalSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
+const aggregationSchema = z.enum(['sum', 'count', 'avg', 'none'])
+
+const chartRecipeSchema = z.object({
+  mode: z.literal('recipe'),
+  chartType: z.enum(['bar', 'line', 'pie', 'scatter']),
+  xAxis: z.object({ column: z.string().min(1), aggregation: aggregationSchema }),
+  yAxis: z.object({ column: z.string().min(1), aggregation: aggregationSchema }),
+  groupBy: z.string().optional()
+})
+
+const chartCustomSchema = z.object({
+  mode: z.literal('custom'),
+  plotlyData: z.array(z.unknown()),
+  plotlyLayout: z.record(z.string(), z.unknown())
+})
+
+export const chartSpecSchema = z.discriminatedUnion('mode', [chartRecipeSchema, chartCustomSchema])
+
+const dataColumnSpecSchema = z.object({
+  name: z.string().min(1),
+  generator: z.enum(['category', 'normal', 'uniform', 'linear', 'constant']),
+  categories: z.array(z.string()).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  mean: z.number().optional(),
+  stddev: z.number().optional(),
+  start: z.number().optional(),
+  end: z.number().optional(),
+  step: z.number().optional(),
+  value: z.unknown().optional()
+})
+
+export const dataProfileSchema = z.object({
+  rowCount: z.number().int().min(1).max(10000),
+  columns: z.array(dataColumnSpecSchema)
+})
+
 export const insightCandidateSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -33,7 +70,8 @@ export const insightCandidateSchema = z.object({
   confidence: z.number().min(0).max(1),
   hypothesis: z.string().min(1),
   metricDescription: z.string().min(1),
-  chartRecommendation: z.enum(['bar', 'line', 'pie', 'scatter', 'table']),
+  chartSpec: chartSpecSchema,
+  dataProfile: dataProfileSchema,
   assumptions: z.array(z.string())
 })
 
