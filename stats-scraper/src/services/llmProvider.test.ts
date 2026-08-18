@@ -1,5 +1,5 @@
 import { createLLMProvider } from './llmProvider'
-import type { CanonicalSchema } from '../domain/types'
+import type { DatasetSchema } from '../domain/types'
 
 vi.mock('ai', () => ({
   generateText: vi.fn(),
@@ -16,9 +16,9 @@ vi.mock('@ai-sdk/mistral', () => ({
 
 import { generateText } from 'ai'
 
-const schema: CanonicalSchema = {
-  entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-  relationships: [],
+const schema: DatasetSchema = {
+  source: 'SQL: orders table',
+  fields: [{ name: 'id', type: 'number', nullable: false }],
   warnings: []
 }
 
@@ -29,16 +29,16 @@ beforeEach(() => {
 it('uses google provider with structured output for schema mapping', async () => {
   vi.mocked(generateText).mockResolvedValue({
     output: {
-      entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-      relationships: [],
+      source: 'SQL: orders table',
+      fields: [{ name: 'id', type: 'number', nullable: false }],
       warnings: []
     }
   } as unknown as Awaited<ReturnType<typeof generateText>>)
 
   const llm = createLLMProvider({ apiKey: 'demo-key', provider: 'google', model: 'gemini-2.0-flash' })
-  const canonical = await llm.mapCanonicalSchema('orders(id int)')
+  const result = await llm.mapSchema('orders(id int)')
 
-  expect(canonical.entities[0].name).toBe('orders')
+  expect(result.fields[0].name).toBe('id')
   expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
 })
 

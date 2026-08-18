@@ -1,15 +1,15 @@
 import { useState } from 'preact/hooks'
-import type { CanonicalSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { DatasetSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
 
-const EMPTY_SCHEMA: CanonicalSchema = {
-  entities: [],
-  relationships: [],
+const EMPTY_SCHEMA: DatasetSchema = {
+  source: '',
+  fields: [],
   warnings: []
 }
 
 export interface WorkspaceState {
   rawSchema: string
-  canonicalSchema: CanonicalSchema
+  datasetSchema: DatasetSchema
   insights: InsightCandidate[]
   datasetsByInsightId: Record<string, GeneratedDataset>
   demoSeed: number
@@ -17,7 +17,7 @@ export interface WorkspaceState {
 
 export interface ExportPayload {
   schemaRaw: string
-  canonicalSchema: CanonicalSchema
+  datasetSchema: DatasetSchema
   insights: InsightCandidate[]
   datasetsByInsightId: Record<string, GeneratedDataset>
   seed: number
@@ -27,7 +27,7 @@ export interface ExportPayload {
 export const buildExportPayload = (state: WorkspaceState): ExportPayload => {
   return {
     schemaRaw: state.rawSchema,
-    canonicalSchema: state.canonicalSchema,
+    datasetSchema: state.datasetSchema,
     insights: state.insights,
     datasetsByInsightId: state.datasetsByInsightId,
     seed: state.demoSeed,
@@ -37,7 +37,7 @@ export const buildExportPayload = (state: WorkspaceState): ExportPayload => {
 
 export const useWorkspaceStore = () => {
   const [rawSchema, setRawSchema] = useState('')
-  const [canonicalSchema, setCanonicalSchema] = useState<CanonicalSchema>(EMPTY_SCHEMA)
+  const [datasetSchema, setDatasetSchema] = useState<DatasetSchema>(EMPTY_SCHEMA)
   const [insights, setInsightsState] = useState<InsightCandidate[]>([])
   const [datasetsByInsightId, setDatasetsByInsightId] = useState<Record<string, GeneratedDataset>>({})
   const [demoSeed] = useState(1337)
@@ -70,17 +70,17 @@ export const useWorkspaceStore = () => {
   }
 
   const exportReport = (): ExportPayload => {
-    return buildExportPayload({ rawSchema, canonicalSchema, insights, datasetsByInsightId, demoSeed })
+    return buildExportPayload({ rawSchema, datasetSchema, insights, datasetsByInsightId, demoSeed })
   }
 
   return {
     rawSchema,
-    canonicalSchema,
+    datasetSchema,
     insights,
     datasetsByInsightId,
     demoSeed,
     setRawSchema,
-    setCanonicalSchema,
+    setDatasetSchema,
     setInsights,
     attachDataset,
     removeInsight,

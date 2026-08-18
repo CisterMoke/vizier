@@ -1,28 +1,31 @@
 import { z } from 'zod'
 
-const fieldTypeSchema = z.enum(['string', 'number', 'boolean', 'date', 'datetime', 'unknown'])
+const fieldTypeSchema = z.enum(['string', 'number', 'boolean', 'date', 'datetime'])
 
-export const canonicalFieldSchema = z.object({
+const semanticTypeSchema = z.enum([
+  'identifier',
+  'measure',
+  'dimension',
+  'timestamp',
+  'currency',
+  'percentage',
+  'count',
+  'text'
+])
+
+export const datasetFieldSchema = z.object({
   name: z.string().min(1),
   type: fieldTypeSchema,
-  nullable: z.boolean()
+  nullable: z.boolean(),
+  semanticType: semanticTypeSchema.optional(),
+  sampleValues: z.array(z.unknown()).optional(),
+  unique: z.boolean().optional(),
+  group: z.string().optional()
 })
 
-export const canonicalEntitySchema = z.object({
-  name: z.string().min(1),
-  fields: z.array(canonicalFieldSchema)
-})
-
-export const canonicalRelationshipSchema = z.object({
-  fromEntity: z.string().min(1),
-  fromField: z.string().min(1),
-  toEntity: z.string().min(1),
-  toField: z.string().min(1)
-})
-
-export const canonicalSchemaSchema = z.object({
-  entities: z.array(canonicalEntitySchema),
-  relationships: z.array(canonicalRelationshipSchema),
+export const datasetSchemaSchema = z.object({
+  source: z.string().min(1),
+  fields: z.array(datasetFieldSchema),
   warnings: z.array(z.string())
 })
 
@@ -79,5 +82,5 @@ export const insightEnvelopeSchema = z.object({
   insights: z.array(insightCandidateSchema)
 })
 
-export const parseCanonicalSchema = (input: unknown) => canonicalSchemaSchema.parse(input)
+export const parseDatasetSchema = (input: unknown) => datasetSchemaSchema.parse(input)
 export const parseInsightEnvelope = (input: unknown) => insightEnvelopeSchema.parse(input)

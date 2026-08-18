@@ -3,9 +3,9 @@ import type { ExportPayload } from '../store/workspaceStore'
 
 const payload: ExportPayload = {
   schemaRaw: 'orders(id int)',
-  canonicalSchema: {
-    entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-    relationships: [],
+  datasetSchema: {
+    source: 'SQL: orders table',
+    fields: [{ name: 'id', type: 'number', nullable: false }],
     warnings: []
   },
   insights: [
@@ -16,7 +16,19 @@ const payload: ExportPayload = {
       confidence: 0.81,
       hypothesis: 'Daily order counts are increasing.',
       metricDescription: 'Daily order count.',
-      chartRecommendation: 'line',
+      chartSpec: {
+        mode: 'recipe',
+        chartType: 'line',
+        xAxis: { column: 'day', aggregation: 'none' },
+        yAxis: { column: 'count', aggregation: 'count' }
+      },
+      dataProfile: {
+        rowCount: 30,
+        columns: [
+          { name: 'day', generator: 'linear', start: 1, end: 30, step: 1 },
+          { name: 'count', generator: 'normal', mean: 100, stddev: 20, min: 50, max: 200 }
+        ]
+      },
       assumptions: ['Order dates are present.']
     }
   ],
@@ -28,6 +40,7 @@ const payload: ExportPayload = {
 it('serializes export payload to formatted JSON', () => {
   const json = serializeExportReport(payload)
   expect(json).toContain('"schemaRaw": "orders(id int)"')
+  expect(json).toContain('"source": "SQL: orders table"')
 })
 
 it('downloads a portable JSON artifact', () => {

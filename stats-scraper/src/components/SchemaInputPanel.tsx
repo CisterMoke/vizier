@@ -42,7 +42,7 @@ export function SchemaInputPanel({ onMapSchema, isMapping, sampleSchemas = [] }:
         <div>
           <Title order={3}>Schema Input</Title>
           <Text c="dimmed" size="sm">
-            Paste any free-form schema text and map it into canonical JSON with AI.
+            Paste any free-form data description (SQL, CSV, JSON, OpenAPI, HTML) and map it into a dataset schema with AI.
           </Text>
         </div>
 

@@ -1,18 +1,13 @@
 import { generateMockDataset } from './mockData'
-import type { CanonicalSchema, InsightCandidate } from '../domain/types'
+import type { DatasetSchema, InsightCandidate } from '../domain/types'
 
-const mockSchema: CanonicalSchema = {
-  entities: [
-    {
-      name: 'orders',
-      fields: [
-        { name: 'id', type: 'number', nullable: false },
-        { name: 'customer_name', type: 'string', nullable: false },
-        { name: 'is_repeat', type: 'boolean', nullable: false }
-      ]
-    }
+const mockSchema: DatasetSchema = {
+  source: 'SQL: orders table',
+  fields: [
+    { name: 'id', type: 'number', nullable: false, semanticType: 'identifier', unique: true },
+    { name: 'customer_name', type: 'string', nullable: false, semanticType: 'dimension' },
+    { name: 'is_repeat', type: 'boolean', nullable: false }
   ],
-  relationships: [],
   warnings: []
 }
 

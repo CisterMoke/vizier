@@ -1,13 +1,13 @@
-import { generateText, Output } from 'ai'
+import { generateText, Output, NoObjectGeneratedError } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
-import { canonicalSchemaSchema, insightEnvelopeSchema, parseCanonicalSchema, parseInsightEnvelope } from '../domain/schemas'
-import type { CanonicalSchema, InsightCandidate } from '../domain/types'
+import { datasetSchemaSchema, insightEnvelopeSchema, parseDatasetSchema, parseInsightEnvelope } from '../domain/schemas'
+import type { DatasetSchema, InsightCandidate } from '../domain/types'
 
 export type ProviderId = 'google' | 'mistral'
 
 export interface InsightPromptInput {
-  schema: CanonicalSchema
+  schema: DatasetSchema
   maxIdeas: number
 }
 
@@ -18,25 +18,36 @@ export interface LLMProviderConfig {
 }
 
 export interface LLMProvider {
-  mapCanonicalSchema: (rawText: string) => Promise<CanonicalSchema>
+  mapSchema: (rawText: string) => Promise<DatasetSchema>
   generateInsights: (input: InsightPromptInput) => Promise<InsightCandidate[]>
 }
 
-const MAP_SCHEMA_PROMPT =
-  'Map free-text schema descriptions into canonical JSON with entities, fields, relationships, and warnings. Only include relationships with explicit evidence from the text.'
+const MAP_SCHEMA_PROMPT = `You are a data schema analyzer. Given free-form text (SQL DDL, CSV headers, JSON, OpenAPI spec, scraped HTML, or any data description), extract a flat list of fields with their types and semantics.
 
-const INSIGHT_PROMPT = `Generate analytics hypotheses from the canonical schema.
+For each field, infer:
+- type: string, number, boolean, date, or datetime
+- semanticType: identifier (primary key), measure (numeric metric), dimension (categorical label), timestamp, currency, percentage, count, or text
+- sampleValues: 3-5 representative values if they can be inferred from the input
+- unique: true if the field is a primary key or unique identifier
+- group: a grouping label if the fields come from distinct nested objects or resources (e.g. "order", "customer")
+
+Set the source to a short description of where the data comes from (e.g. "SQL: orders table", "CSV: sales_data", "OpenAPI: /orders endpoint").
+Include warnings for any fields you are uncertain about.`
+
+const INSIGHT_PROMPT = `You are an analytics brainstorming assistant. Given a dataset schema with field semantics and sample values, generate creative analytics hypotheses suitable for a hackathon demo.
+
 For each insight, provide:
-- A chartSpec with mode "recipe" (preferred) specifying chartType (bar, line, pie, or scatter), xAxis and yAxis column names from the schema, and aggregation (sum, count, avg, or none).
-- For advanced cases, you may use mode "custom" with raw plotlyData and plotlyLayout.
+- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, or scatter), xAxis and yAxis with column names and aggregation (sum, count, avg, or none).
 - A dataProfile specifying rowCount and column definitions. Each column must use one of these generators:
   - "category": provide categories array (e.g. ["Electronics", "Clothing", "Home"])
-  - "normal": provide mean and stddev, optional min/max for clamping
+  - "normal": provide mean and stddev, optional min/max
   - "uniform": provide min and max
-  - "linear": provide start, end, and step (use for time-like axes)
+  - "linear": provide start, end, and step
   - "constant": provide value
-Column names in dataProfile should match the chartSpec axis columns so the chart can render correctly.
-Return practical hackathon-ready ideas with concise reasoning.`
+Column names in dataProfile must match the chartSpec axis columns.
+Use the field semanticType and sampleValues from the schema to make realistic choices.
+Keep it simple: always use mode "recipe" for chartSpec.
+Return practical, visually interesting ideas with concise reasoning.`
 
 const createModel = (config: LLMProviderConfig) => {
   if (config.provider === 'google') {
@@ -52,27 +63,70 @@ const createModel = (config: LLMProviderConfig) => {
   throw new Error(`Unsupported provider: ${config.provider}`)
 }
 
+const safeGenerate = async <T,>(
+  fn: () => Promise<{ output: T }>,
+  fallbackFn: () => Promise<{ output: T }>,
+  context: string
+): Promise<T> => {
+  try {
+    const result = await fn()
+    return result.output
+  } catch (error) {
+    if (NoObjectGeneratedError.isInstance(error)) {
+      console.error(`[${context}] No object generated. Cause:`, error.cause)
+      console.error(`[${context}] Raw text:`, error.text?.slice(0, 500))
+    }
+    try {
+      const retryResult = await fallbackFn()
+      return retryResult.output
+    } catch (retryError) {
+      if (NoObjectGeneratedError.isInstance(retryError)) {
+        console.error(`[${context}] Retry also failed. Cause:`, retryError.cause)
+      }
+      throw retryError
+    }
+  }
+}
+
 export const createLLMProvider = (config: LLMProviderConfig): LLMProvider => {
   return {
-    mapCanonicalSchema: async (rawText: string): Promise<CanonicalSchema> => {
+    mapSchema: async (rawText: string): Promise<DatasetSchema> => {
       const model = createModel(config)
-      const { output } = await generateText({
-        model,
-        output: Output.object({ schema: canonicalSchemaSchema }),
-        system: MAP_SCHEMA_PROMPT,
-        prompt: `Normalize this schema description into canonical JSON:\n\n${rawText}`
-      })
+      const output = await safeGenerate(
+        () => generateText({
+          model,
+          output: Output.object({ schema: datasetSchemaSchema }),
+          system: MAP_SCHEMA_PROMPT,
+          prompt: `Analyze this data description and extract the dataset schema:\n\n${rawText}`
+        }),
+        () => generateText({
+          model,
+          output: Output.object({ schema: datasetSchemaSchema }),
+          system: MAP_SCHEMA_PROMPT,
+          prompt: `Extract the fields from this data. Return JSON with source, fields (each with name, type, nullable), and warnings:\n\n${rawText}`
+        }),
+        'schema-mapping'
+      )
 
-      return parseCanonicalSchema(output)
+      return parseDatasetSchema(output)
     },
     generateInsights: async (input: InsightPromptInput): Promise<InsightCandidate[]> => {
       const model = createModel(config)
-      const { output } = await generateText({
-        model,
-        output: Output.object({ schema: insightEnvelopeSchema }),
-        system: INSIGHT_PROMPT,
-        prompt: `Given this canonical schema, produce up to ${input.maxIdeas} insight candidates:\n\n${JSON.stringify(input.schema)}`
-      })
+      const output = await safeGenerate(
+        () => generateText({
+          model,
+          output: Output.object({ schema: insightEnvelopeSchema }),
+          system: INSIGHT_PROMPT,
+          prompt: `Given this dataset schema, produce up to ${input.maxIdeas} insight candidates:\n\n${JSON.stringify(input.schema)}`
+        }),
+        () => generateText({
+          model,
+          output: Output.object({ schema: insightEnvelopeSchema }),
+          system: `${INSIGHT_PROMPT}\n\nIMPORTANT: Make sure every chartSpec uses mode "recipe". Make sure every dataProfile column has a valid generator. Make sure column names match between chartSpec and dataProfile.`,
+          prompt: `Generate ${input.maxIdeas} insights for this schema. Each insight needs: id, title, summary, confidence, hypothesis, metricDescription, chartSpec (mode "recipe", chartType, xAxis, yAxis), dataProfile (rowCount, columns with generators), assumptions.\n\nSchema: ${JSON.stringify(input.schema)}`
+        }),
+        'insight-generation'
+      )
 
       return parseInsightEnvelope(output).insights
     }

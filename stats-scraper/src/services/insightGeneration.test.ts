@@ -1,9 +1,12 @@
 import { generateInsightCandidates } from './insightGeneration'
-import type { CanonicalSchema, InsightCandidate } from '../domain/types'
+import type { DatasetSchema, InsightCandidate } from '../domain/types'
 
-const mockSchema: CanonicalSchema = {
-  entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-  relationships: [],
+const mockSchema: DatasetSchema = {
+  source: 'SQL: orders table',
+  fields: [
+    { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
+    { name: 'total', type: 'number', nullable: false, semanticType: 'currency', sampleValues: [49.99, 129.5] }
+  ],
   warnings: []
 }
 
@@ -32,7 +35,7 @@ const mockInsight: InsightCandidate = {
 
 it('returns validated insight candidates from provider output', async () => {
   const provider = {
-    mapCanonicalSchema: async (): Promise<CanonicalSchema> => mockSchema,
+    mapSchema: async (): Promise<DatasetSchema> => mockSchema,
     generateInsights: async (): Promise<InsightCandidate[]> => [mockInsight]
   }
 

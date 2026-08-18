@@ -27,7 +27,7 @@ export function App() {
     fallbackInsights.forEach((insight, index) => {
       workspace.attachDataset(
         insight.id,
-        generateMockDataset(workspace.canonicalSchema, insight, { seed: workspace.demoSeed + index })
+        generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + index })
       )
     })
   }
@@ -46,8 +46,8 @@ export function App() {
 
     try {
       const llm = createLLMProvider({ apiKey, provider, model })
-      const canonical = await llm.mapCanonicalSchema(rawText)
-      workspace.setCanonicalSchema(canonical)
+      const schema = await llm.mapSchema(rawText)
+      workspace.setDatasetSchema(schema)
     } catch (error) {
       setGenerationError(
         error instanceof Error ? `Schema mapping failed: ${error.message}` : 'Schema mapping failed.'
@@ -58,7 +58,7 @@ export function App() {
   }
 
   const handleGenerateInsights = async () => {
-    if (workspace.canonicalSchema.entities.length === 0) {
+    if (workspace.datasetSchema.fields.length === 0) {
       return
     }
 
@@ -74,13 +74,13 @@ export function App() {
       }
 
       const llm = createLLMProvider({ apiKey, provider, model })
-      const nextInsights = await generateInsightCandidates(workspace.canonicalSchema, llm)
+      const nextInsights = await generateInsightCandidates(workspace.datasetSchema, llm)
 
       workspace.setInsights(nextInsights)
       nextInsights.forEach((insight, index) => {
         workspace.attachDataset(
           insight.id,
-          generateMockDataset(workspace.canonicalSchema, insight, { seed: workspace.demoSeed + index })
+          generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + index })
         )
       })
     } catch (error) {
@@ -106,7 +106,7 @@ export function App() {
 
     workspace.attachDataset(
       insightId,
-      generateMockDataset(workspace.canonicalSchema, insight, { seed: workspace.demoSeed + insightIndex + 1000 })
+      generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + insightIndex + 1000 })
     )
   }
 
@@ -132,7 +132,7 @@ export function App() {
                 </Badge>
                 <Title order={1}>Analytics Idea Lab</Title>
                 <Text c="dimmed" mt={6}>
-                  Map free text into canonical schema, generate hypotheses, and visualize mock analytics instantly.
+                  Map any data source into a dataset schema, generate hypotheses, and visualize mock analytics instantly.
                 </Text>
               </div>
               <Button
@@ -154,7 +154,7 @@ export function App() {
 
           <SchemaInputPanel onMapSchema={handleMapSchema} isMapping={isMapping} sampleSchemas={SAMPLE_SCHEMAS} />
 
-          <SchemaPreviewEditor schema={workspace.canonicalSchema} onChange={workspace.setCanonicalSchema} />
+          <SchemaPreviewEditor schema={workspace.datasetSchema} onChange={workspace.setDatasetSchema} />
 
           <InsightControls
             apiKey={apiKey}
@@ -165,7 +165,7 @@ export function App() {
             onModelChange={setModel}
             onGenerate={handleGenerateInsights}
             isGenerating={isGenerating}
-            disabled={workspace.canonicalSchema.entities.length === 0}
+            disabled={workspace.datasetSchema.fields.length === 0}
           />
 
           <ChartGrid

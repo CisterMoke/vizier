@@ -1,13 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/preact'
 import { MantineProvider } from '@mantine/core'
-import type { CanonicalSchema } from '../domain/types'
+import type { DatasetSchema } from '../domain/types'
 import { SchemaInputPanel } from './SchemaInputPanel'
 import { SchemaPreviewEditor } from './SchemaPreviewEditor'
 import { SAMPLE_SCHEMAS } from '../data/sampleSchemas'
 
-const sampleSchema: CanonicalSchema = {
-  entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-  relationships: [],
+const sampleSchema: DatasetSchema = {
+  source: 'SQL: orders table',
+  fields: [{ name: 'id', type: 'number', nullable: false, semanticType: 'identifier' }],
   warnings: []
 }
 
@@ -36,26 +36,26 @@ it('allows selecting multiple sample schemas and inserting them into schema text
   fireEvent.click(screen.getByRole('button', { name: /insert selected samples/i }))
 
   const textarea = screen.getByLabelText(/schema text/i) as HTMLTextAreaElement
-  expect(textarea.value).toContain('orders(id int, customer_id int, total decimal, created_at timestamp)')
-  expect(textarea.value).toContain('events(id int, user_id int, event_name text, occurred_at timestamp)')
+  expect(textarea.value).toContain('orders(id int, customer_id int, total decimal, status varchar, created_at timestamp)')
+  expect(textarea.value).toContain('event_id,user_id,event_name,session_duration,timestamp')
 
   fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
   expect(onMapSchema).toHaveBeenCalledWith(textarea.value)
 })
 
-it('emits canonical schema changes from the JSON preview editor', () => {
+it('emits dataset schema changes from the JSON preview editor', () => {
   const onChange = vi.fn()
   renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
-  fireEvent.input(screen.getByLabelText(/canonical schema json/i), {
+  fireEvent.input(screen.getByLabelText(/dataset schema json/i), {
     target: {
-      value: '{"entities":[{"name":"users","fields":[{"name":"id","type":"number","nullable":false}]}],"relationships":[],"warnings":[]}'
+      value: '{"source":"CSV: test","fields":[{"name":"users","type":"string","nullable":false}],"warnings":[]}'
     }
   })
 
   expect(onChange).toHaveBeenCalledWith({
-    entities: [{ name: 'users', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-    relationships: [],
+    source: 'CSV: test',
+    fields: [{ name: 'users', type: 'string', nullable: false }],
     warnings: []
   })
 })
@@ -64,25 +64,25 @@ it('keeps local draft JSON when edit is invalid and only emits when valid', () =
   const onChange = vi.fn()
   renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
-  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+  const editor = screen.getByLabelText(/dataset schema json/i) as HTMLTextAreaElement
 
   fireEvent.input(editor, {
-    target: { value: '{"entities": [' }
+    target: { value: '{"fields": [' }
   })
 
   expect(onChange).not.toHaveBeenCalled()
-  expect(editor.value).toBe('{"entities": [')
+  expect(editor.value).toBe('{"fields": [')
   expect(screen.getByRole('alert')).toBeInTheDocument()
 
   fireEvent.input(editor, {
     target: {
-      value: '{"entities":[{"name":"products","fields":[{"name":"sku","type":"string","nullable":false}]}],"relationships":[],"warnings":[]}'
+      value: '{"source":"CSV: x","fields":[{"name":"sku","type":"string","nullable":false}],"warnings":[]}'
     }
   })
 
   expect(onChange).toHaveBeenLastCalledWith({
-    entities: [{ name: 'products', fields: [{ name: 'sku', type: 'string', nullable: false }] }],
-    relationships: [],
+    source: 'CSV: x',
+    fields: [{ name: 'sku', type: 'string', nullable: false }],
     warnings: []
   })
 })
@@ -91,17 +91,17 @@ it('syncs textarea content to external schema updates after local edits', () => 
   const onChange = vi.fn()
   const { rerender } = renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
-  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+  const editor = screen.getByLabelText(/dataset schema json/i) as HTMLTextAreaElement
 
   fireEvent.input(editor, {
-    target: { value: '{"entities": [' }
+    target: { value: '{"fields": [' }
   })
 
-  expect(editor.value).toBe('{"entities": [')
+  expect(editor.value).toBe('{"fields": [')
 
-  const externalSchema: CanonicalSchema = {
-    entities: [{ name: 'customers', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-    relationships: [],
+  const externalSchema: DatasetSchema = {
+    source: 'CSV: customers',
+    fields: [{ name: 'id', type: 'number', nullable: false }],
     warnings: []
   }
 
@@ -111,24 +111,24 @@ it('syncs textarea content to external schema updates after local edits', () => 
     </MantineProvider>
   )
 
-  expect(editor.value).toContain('"customers"')
+  expect(editor.value).toContain('CSV: customers')
 })
 
 it('clears stale parse error when external schema update resets draft to valid JSON', () => {
   const onChange = vi.fn()
   const { rerender } = renderWithMantine(<SchemaPreviewEditor schema={sampleSchema} onChange={onChange} />)
 
-  const editor = screen.getByLabelText(/canonical schema json/i) as HTMLTextAreaElement
+  const editor = screen.getByLabelText(/dataset schema json/i) as HTMLTextAreaElement
 
   fireEvent.input(editor, {
-    target: { value: '{"entities": [' }
+    target: { value: '{"fields": [' }
   })
 
   expect(screen.getByRole('alert')).toBeInTheDocument()
 
-  const externalSchema: CanonicalSchema = {
-    entities: [{ name: 'invoices', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-    relationships: [],
+  const externalSchema: DatasetSchema = {
+    source: 'CSV: invoices',
+    fields: [{ name: 'id', type: 'number', nullable: false }],
     warnings: []
   }
 
@@ -138,6 +138,6 @@ it('clears stale parse error when external schema update resets draft to valid J
     </MantineProvider>
   )
 
-  expect(editor.value).toContain('"invoices"')
+  expect(editor.value).toContain('CSV: invoices')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

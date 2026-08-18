@@ -9,13 +9,18 @@ export interface SampleSchema {
 export const SAMPLE_SCHEMAS: SampleSchema[] = [
   {
     id: 'retail-orders',
-    label: 'Retail Orders',
-    rawSchema: 'orders(id int, customer_id int, total decimal, created_at timestamp)'
+    label: 'Retail Orders (SQL)',
+    rawSchema: 'orders(id int, customer_id int, total decimal, status varchar, created_at timestamp)'
   },
   {
     id: 'product-usage',
-    label: 'Product Usage',
-    rawSchema: 'events(id int, user_id int, event_name text, occurred_at timestamp)'
+    label: 'Product Usage (CSV)',
+    rawSchema: 'event_id,user_id,event_name,session_duration,timestamp\ne1,u1,page_view,120,2024-01-01T10:00:00Z'
+  },
+  {
+    id: 'api-resource',
+    label: 'OpenAPI: /orders',
+    rawSchema: 'GET /orders -> { id: string, customer: { name: string, segment: string }, total: number, items: [{ sku: string, qty: number, price: number }] }'
   }
 ]
 

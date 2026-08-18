@@ -1,4 +1,4 @@
-import type { CanonicalSchema, DataColumnSpec, GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { DataColumnSpec, DatasetSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
 
 type MockDataOptions = {
   seed?: number
@@ -70,7 +70,7 @@ const generateValue = (spec: DataColumnSpec, index: number, random: () => number
 }
 
 export const generateMockDataset = (
-  _schema: CanonicalSchema,
+  _schema: DatasetSchema,
   insight: InsightCandidate,
   opts: MockDataOptions = {}
 ): GeneratedDataset => {

@@ -1,11 +1,11 @@
 import { Alert, Paper, Stack, Text, Textarea, Title } from '@mantine/core'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { parseCanonicalSchema } from '../domain/schemas'
-import type { CanonicalSchema } from '../domain/types'
+import { parseDatasetSchema } from '../domain/schemas'
+import type { DatasetSchema } from '../domain/types'
 
 interface SchemaPreviewEditorProps {
-  schema: CanonicalSchema
-  onChange: (schema: CanonicalSchema) => void
+  schema: DatasetSchema
+  onChange: (schema: DatasetSchema) => void
 }
 
 export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorProps) {
@@ -23,7 +23,7 @@ export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorPro
     setDraft(value)
 
     try {
-      const parsed = parseCanonicalSchema(JSON.parse(value))
+      const parsed = parseDatasetSchema(JSON.parse(value))
       setJsonError(null)
       onChange(parsed)
     } catch (error) {
@@ -35,15 +35,15 @@ export function SchemaPreviewEditor({ schema, onChange }: SchemaPreviewEditorPro
     <Paper withBorder radius="lg" p="lg" className="bg-white/80 backdrop-blur-sm shadow-sm">
       <Stack gap="md">
         <div>
-          <Title order={3}>Canonical Schema</Title>
+          <Title order={3}>Dataset Schema</Title>
           <Text c="dimmed" size="sm">
             Review and edit normalized JSON directly.
           </Text>
         </div>
 
         <Textarea
-          id="canonical-schema-json"
-          label="Canonical schema JSON"
+          id="dataset-schema-json"
+          label="Dataset schema JSON"
           minRows={14}
           autosize
           value={draft}

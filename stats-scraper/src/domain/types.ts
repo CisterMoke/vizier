@@ -1,26 +1,28 @@
-export type CanonicalFieldType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'unknown'
+export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'datetime'
 
-export interface CanonicalField {
+export type SemanticType =
+  | 'identifier'
+  | 'measure'
+  | 'dimension'
+  | 'timestamp'
+  | 'currency'
+  | 'percentage'
+  | 'count'
+  | 'text'
+
+export interface DatasetField {
   name: string
-  type: CanonicalFieldType
+  type: FieldType
   nullable: boolean
+  semanticType?: SemanticType
+  sampleValues?: unknown[]
+  unique?: boolean
+  group?: string
 }
 
-export interface CanonicalEntity {
-  name: string
-  fields: CanonicalField[]
-}
-
-export interface CanonicalRelationship {
-  fromEntity: string
-  fromField: string
-  toEntity: string
-  toField: string
-}
-
-export interface CanonicalSchema {
-  entities: CanonicalEntity[]
-  relationships: CanonicalRelationship[]
+export interface DatasetSchema {
+  source: string
+  fields: DatasetField[]
   warnings: string[]
 }
 

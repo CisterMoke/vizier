@@ -1,18 +1,13 @@
 import { renderHook, act } from '@testing-library/preact'
-import type { CanonicalSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { DatasetSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
 import { buildExportPayload, useWorkspaceStore } from './workspaceStore'
 
-const mockSchema: CanonicalSchema = {
-  entities: [
-    {
-      name: 'orders',
-      fields: [
-        { name: 'id', type: 'number', nullable: false },
-        { name: 'total', type: 'number', nullable: false }
-      ]
-    }
+const mockSchema: DatasetSchema = {
+  source: 'SQL: orders table',
+  fields: [
+    { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
+    { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
   ],
-  relationships: [],
   warnings: []
 }
 
@@ -23,21 +18,33 @@ const mockInsight: InsightCandidate = {
   confidence: 0.9,
   hypothesis: 'Revenue increases over time.',
   metricDescription: 'Weekly total revenue.',
-  chartRecommendation: 'line',
+  chartSpec: {
+    mode: 'recipe',
+    chartType: 'line',
+    xAxis: { column: 'week', aggregation: 'none' },
+    yAxis: { column: 'revenue', aggregation: 'sum' }
+  },
+  dataProfile: {
+    rowCount: 52,
+    columns: [
+      { name: 'week', generator: 'linear', start: 1, end: 52, step: 1 },
+      { name: 'revenue', generator: 'normal', mean: 500, stddev: 200, min: 0, max: 2000 }
+    ]
+  },
   assumptions: ['Order totals are complete.']
 }
 
 const mockDataset: GeneratedDataset = {
   id: 'dataset-ins-1-1337',
   name: 'Revenue trend sample',
-  columns: ['orders.id', 'orders.total'],
-  rows: [{ 'orders.id': 1, 'orders.total': 120.5 }]
+  columns: ['week', 'revenue'],
+  rows: [{ week: 1, revenue: 120.5 }]
 }
 
 it('builds export payload with schema, insights, datasets, and timestamp', () => {
   const payload = buildExportPayload({
     rawSchema: 'orders(id int, total decimal)',
-    canonicalSchema: mockSchema,
+    datasetSchema: mockSchema,
     insights: [mockInsight],
     datasetsByInsightId: { [mockInsight.id]: mockDataset },
     demoSeed: 1337

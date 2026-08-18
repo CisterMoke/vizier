@@ -6,18 +6,18 @@ vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
 }))
 
-const mapCanonicalSchemaMock = vi.fn()
+const mapSchemaMock = vi.fn()
 const generateInsightsMock = vi.fn()
 
 vi.mock('./services/llmProvider', () => ({
   createLLMProvider: () => ({
-    mapCanonicalSchema: mapCanonicalSchemaMock,
+    mapSchema: mapSchemaMock,
     generateInsights: generateInsightsMock
   })
 }))
 
 beforeEach(() => {
-  mapCanonicalSchemaMock.mockReset()
+  mapSchemaMock.mockReset()
   generateInsightsMock.mockReset()
 })
 
@@ -36,13 +36,16 @@ it('requires api key for schema mapping', async () => {
   fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent(/provide an api key/i)
-  expect(mapCanonicalSchemaMock).not.toHaveBeenCalled()
+  expect(mapSchemaMock).not.toHaveBeenCalled()
 })
 
 it('maps schema with llm and generates chart cards', async () => {
-  mapCanonicalSchemaMock.mockResolvedValue({
-    entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-    relationships: [],
+  mapSchemaMock.mockResolvedValue({
+    source: 'SQL: orders table',
+    fields: [
+      { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
+      { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
+    ],
     warnings: []
   })
 
@@ -76,7 +79,7 @@ it('maps schema with llm and generates chart cards', async () => {
   fireEvent.input(screen.getByLabelText(/api key/i), { target: { value: 'demo-key' } })
   fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
-  await waitFor(() => expect(mapCanonicalSchemaMock).toHaveBeenCalled())
+  await waitFor(() => expect(mapSchemaMock).toHaveBeenCalled())
 
   fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
 

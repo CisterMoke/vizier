@@ -24,16 +24,11 @@ test('end-to-end flow from schema paste to report export', async ({ page }) => {
         contentType: 'application/json',
         body: JSON.stringify(
           mockGoogleResponse({
-            entities: [
-              {
-                name: 'orders',
-                fields: [
-                  { name: 'id', type: 'number', nullable: false },
-                  { name: 'total', type: 'number', nullable: true }
-                ]
-              }
+            source: 'SQL: orders table',
+            fields: [
+              { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
+              { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
             ],
-            relationships: [],
             warnings: []
           })
         )
