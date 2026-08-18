@@ -3,34 +3,40 @@ import { expect, test } from '@playwright/test'
 test('end-to-end flow from schema paste to report export', async ({ page }) => {
   let requestCount = 0
 
-  await page.route('https://api.openai.com/**', async (route) => {
+  const mockGoogleResponse = (payload: unknown) => ({
+    candidates: [
+      {
+        content: {
+          parts: [{ text: JSON.stringify(payload) }],
+          role: 'model'
+        },
+        finishReason: 'STOP'
+      }
+    ]
+  })
+
+  await page.route('https://generativelanguage.googleapis.com/**', async (route) => {
     requestCount += 1
 
     if (requestCount === 1) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  entities: [
-                    {
-                      name: 'orders',
-                      fields: [
-                        { name: 'id', type: 'number', nullable: false },
-                        { name: 'total', type: 'number', nullable: true }
-                      ]
-                    }
-                  ],
-                  relationships: [],
-                  warnings: []
-                })
+        body: JSON.stringify(
+          mockGoogleResponse({
+            entities: [
+              {
+                name: 'orders',
+                fields: [
+                  { name: 'id', type: 'number', nullable: false },
+                  { name: 'total', type: 'number', nullable: true }
+                ]
               }
-            }
-          ]
-        })
+            ],
+            relationships: [],
+            warnings: []
+          })
+        )
       })
       return
     }
@@ -38,34 +44,28 @@ test('end-to-end flow from schema paste to report export', async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                insights: [
-                  {
-                    id: 'insight-1',
-                    title: 'Orders over time',
-                    summary: 'Weekly order count trend.',
-                    confidence: 0.84,
-                    hypothesis: 'Orders are increasing week by week.',
-                    metricDescription: 'Weekly order count.',
-                    chartRecommendation: 'line',
-                    assumptions: ['created_at timestamps are complete']
-                  }
-                ]
-              })
+      body: JSON.stringify(
+        mockGoogleResponse({
+          insights: [
+            {
+              id: 'insight-1',
+              title: 'Orders over time',
+              summary: 'Weekly order count trend.',
+              confidence: 0.84,
+              hypothesis: 'Orders are increasing week by week.',
+              metricDescription: 'Weekly order count.',
+              chartRecommendation: 'line',
+              assumptions: ['created_at timestamps are complete']
             }
-          }
-        ]
-      })
+          ]
+        })
+      )
     })
   })
 
   await page.goto('/')
   await page.getByLabel(/schema text/i).fill('orders(id int, total decimal)')
-  await page.getByLabel(/llm api key/i).fill('demo-key')
+  await page.getByLabel(/api key/i).fill('demo-key')
   await page.getByRole('button', { name: /map schema with ai/i }).click()
   await page.getByRole('button', { name: /generate/i }).click()
   await expect(page.getByTestId('chart-card')).toHaveCount(1)

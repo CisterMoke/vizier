@@ -1,10 +1,20 @@
-import { createLLM } from '@node-llm/core'
+import { generateText, Output } from 'ai'
+import { createGoogle } from '@ai-sdk/google'
+import { createMistral } from '@ai-sdk/mistral'
 import { canonicalSchemaSchema, insightEnvelopeSchema, parseCanonicalSchema, parseInsightEnvelope } from '../domain/schemas'
 import type { CanonicalSchema, InsightCandidate } from '../domain/types'
+
+export type ProviderId = 'google' | 'mistral'
 
 export interface InsightPromptInput {
   schema: CanonicalSchema
   maxIdeas: number
+}
+
+export interface LLMProviderConfig {
+  apiKey: string
+  provider: ProviderId
+  model: string
 }
 
 export interface LLMProvider {
@@ -18,47 +28,43 @@ const MAP_SCHEMA_PROMPT =
 const INSIGHT_PROMPT =
   'Generate analytics hypotheses from the canonical schema. Return practical hackathon-ready ideas with concise reasoning and chart recommendations.'
 
-const getDataFromResponse = (response: unknown): unknown => {
-  if (
-    typeof response === 'object' &&
-    response !== null &&
-    'data' in response &&
-    (response as { data?: unknown }).data !== undefined
-  ) {
-    return (response as { data: unknown }).data
+const createModel = (config: LLMProviderConfig) => {
+  if (config.provider === 'google') {
+    const provider = createGoogle({ apiKey: config.apiKey })
+    return provider(config.model)
   }
 
-  return response
+  if (config.provider === 'mistral') {
+    const provider = createMistral({ apiKey: config.apiKey })
+    return provider(config.model)
+  }
+
+  throw new Error(`Unsupported provider: ${config.provider}`)
 }
 
-export const createBrowserLLMProvider = (apiKey: string): LLMProvider => {
-  const llm = createLLM({
-    provider: 'openai',
-    openaiApiKey: apiKey
-  })
-
+export const createLLMProvider = (config: LLMProviderConfig): LLMProvider => {
   return {
     mapCanonicalSchema: async (rawText: string): Promise<CanonicalSchema> => {
-      const response = await llm
-        .chat('gpt-5.4-nano')
-        .withSchema(canonicalSchemaSchema as unknown as Record<string, unknown>)
-        .withInstructions(MAP_SCHEMA_PROMPT)
-        .ask(`Normalize this schema description into canonical JSON:\n\n${rawText}`)
+      const model = createModel(config)
+      const { output } = await generateText({
+        model,
+        output: Output.object({ schema: canonicalSchemaSchema }),
+        system: MAP_SCHEMA_PROMPT,
+        prompt: `Normalize this schema description into canonical JSON:\n\n${rawText}`
+      })
 
-      return parseCanonicalSchema(getDataFromResponse(response))
+      return parseCanonicalSchema(output)
     },
     generateInsights: async (input: InsightPromptInput): Promise<InsightCandidate[]> => {
-      const response = await llm
-        .chat('gpt-5.4-nano')
-        .withSchema(insightEnvelopeSchema as unknown as Record<string, unknown>)
-        .withInstructions(INSIGHT_PROMPT)
-        .ask(
-          `Given this canonical schema, produce up to ${input.maxIdeas} insight candidates:\n\n${JSON.stringify(
-            input.schema
-          )}`
-        )
+      const model = createModel(config)
+      const { output } = await generateText({
+        model,
+        output: Output.object({ schema: insightEnvelopeSchema }),
+        system: INSIGHT_PROMPT,
+        prompt: `Given this canonical schema, produce up to ${input.maxIdeas} insight candidates:\n\n${JSON.stringify(input.schema)}`
+      })
 
-      return parseInsightEnvelope(getDataFromResponse(response)).insights
+      return parseInsightEnvelope(output).insights
     }
   }
 }

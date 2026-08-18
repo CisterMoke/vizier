@@ -15,3 +15,11 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     })
   })
 }
+
+if (typeof globalThis !== 'undefined' && !globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}

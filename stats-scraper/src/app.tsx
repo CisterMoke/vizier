@@ -7,7 +7,8 @@ import { SchemaPreviewEditor } from './components/SchemaPreviewEditor'
 import { FALLBACK_INSIGHTS, SAMPLE_SCHEMAS } from './data/sampleSchemas'
 import { downloadExportReport } from './lib/exportReport'
 import { generateInsightCandidates } from './services/insightGeneration'
-import { createBrowserLLMProvider } from './services/llmProvider'
+import { createLLMProvider } from './services/llmProvider'
+import type { ProviderId } from './services/llmProvider'
 import { generateMockDataset } from './services/mockData'
 import { useWorkspaceStore } from './store/workspaceStore'
 
@@ -16,6 +17,8 @@ const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to run AI schema mapping.'
 export function App() {
   const workspace = useWorkspaceStore()
   const [apiKey, setApiKey] = useState('')
+  const [provider, setProvider] = useState<ProviderId>('google')
+  const [model, setModel] = useState('gemini-2.0-flash')
   const [isMapping, setIsMapping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
@@ -42,8 +45,8 @@ export function App() {
     setIsMapping(true)
 
     try {
-      const provider = createBrowserLLMProvider(apiKey)
-      const canonical = await provider.mapCanonicalSchema(rawText)
+      const llm = createLLMProvider({ apiKey, provider, model })
+      const canonical = await llm.mapCanonicalSchema(rawText)
       workspace.setCanonicalSchema(canonical)
     } catch (error) {
       setGenerationError(
@@ -70,8 +73,8 @@ export function App() {
         return
       }
 
-      const provider = createBrowserLLMProvider(apiKey)
-      const nextInsights = await generateInsightCandidates(workspace.canonicalSchema, provider)
+      const llm = createLLMProvider({ apiKey, provider, model })
+      const nextInsights = await generateInsightCandidates(workspace.canonicalSchema, llm)
 
       workspace.setInsights(nextInsights)
       nextInsights.forEach((insight, index) => {
@@ -156,6 +159,10 @@ export function App() {
           <InsightControls
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
+            provider={provider}
+            onProviderChange={setProvider}
+            model={model}
+            onModelChange={setModel}
             onGenerate={handleGenerateInsights}
             isGenerating={isGenerating}
             disabled={workspace.canonicalSchema.entities.length === 0}

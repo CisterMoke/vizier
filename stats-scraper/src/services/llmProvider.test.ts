@@ -1,15 +1,20 @@
-import { createBrowserLLMProvider } from './llmProvider'
+import { createLLMProvider } from './llmProvider'
 import type { CanonicalSchema } from '../domain/types'
 
-const withSchemaSpy = vi.fn()
-const withInstructionsSpy = vi.fn()
-const askSpy = vi.fn()
-const chatSpy = vi.fn()
-const createLLMSpy = vi.fn()
-
-vi.mock('@node-llm/core', () => ({
-  createLLM: (...args: unknown[]) => createLLMSpy(...args)
+vi.mock('ai', () => ({
+  generateText: vi.fn(),
+  Output: { object: (opts: unknown) => opts }
 }))
+
+vi.mock('@ai-sdk/google', () => ({
+  createGoogle: vi.fn((_opts: unknown) => (model: string) => ({ model, provider: 'google' }))
+}))
+
+vi.mock('@ai-sdk/mistral', () => ({
+  createMistral: vi.fn((_opts: unknown) => (model: string) => ({ model, provider: 'mistral' }))
+}))
+
+import { generateText } from 'ai'
 
 const schema: CanonicalSchema = {
   entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
@@ -18,30 +23,28 @@ const schema: CanonicalSchema = {
 }
 
 beforeEach(() => {
-  withSchemaSpy.mockReset()
-  withInstructionsSpy.mockReset()
-  askSpy.mockReset()
-  chatSpy.mockReset()
-  createLLMSpy.mockReset()
-
-  withSchemaSpy.mockReturnThis()
-  withInstructionsSpy.mockReturnThis()
-  askSpy.mockResolvedValue({ data: { insights: [] } })
-
-  chatSpy.mockReturnValue({
-    withSchema: withSchemaSpy,
-    withInstructions: withInstructionsSpy,
-    ask: askSpy
-  })
-
-  createLLMSpy.mockReturnValue({
-    chat: chatSpy
-  })
+  vi.mocked(generateText).mockReset()
 })
 
-it('uses node-llm with schema constraints when generating insights', async () => {
-  askSpy.mockResolvedValue({
-    data: {
+it('uses google provider with structured output for schema mapping', async () => {
+  vi.mocked(generateText).mockResolvedValue({
+    output: {
+      entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
+      relationships: [],
+      warnings: []
+    }
+  } as unknown as Awaited<ReturnType<typeof generateText>>)
+
+  const llm = createLLMProvider({ apiKey: 'demo-key', provider: 'google', model: 'gemini-2.0-flash' })
+  const canonical = await llm.mapCanonicalSchema('orders(id int)')
+
+  expect(canonical.entities[0].name).toBe('orders')
+  expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
+})
+
+it('uses mistral provider with structured output for insight generation', async () => {
+  vi.mocked(generateText).mockResolvedValue({
+    output: {
       insights: [
         {
           id: 'ins-1',
@@ -55,30 +58,12 @@ it('uses node-llm with schema constraints when generating insights', async () =>
         }
       ]
     }
-  })
+  } as unknown as Awaited<ReturnType<typeof generateText>>)
 
-  const provider = createBrowserLLMProvider('demo-key')
-  const insights = await provider.generateInsights({ schema, maxIdeas: 5 })
+  const llm = createLLMProvider({ apiKey: 'demo-key', provider: 'mistral', model: 'mistral-large-latest' })
+  const insights = await llm.generateInsights({ schema, maxIdeas: 5 })
 
-  expect(createLLMSpy).toHaveBeenCalledWith(expect.objectContaining({ openaiApiKey: 'demo-key' }))
-  expect(chatSpy).toHaveBeenCalled()
-  expect(withSchemaSpy).toHaveBeenCalled()
-  expect(withInstructionsSpy).toHaveBeenCalled()
   expect(insights[0].id).toBe('ins-1')
-})
-
-it('maps free text into canonical schema through node-llm schema output', async () => {
-  askSpy.mockResolvedValue({
-    data: {
-      entities: [{ name: 'orders', fields: [{ name: 'id', type: 'number', nullable: false }] }],
-      relationships: [],
-      warnings: []
-    }
-  })
-
-  const provider = createBrowserLLMProvider('demo-key')
-  const canonical = await provider.mapCanonicalSchema('orders(id int)')
-
-  expect(withSchemaSpy).toHaveBeenCalled()
-  expect(canonical.entities[0].name).toBe('orders')
+  expect(insights[0].chartRecommendation).toBe('line')
+  expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
 })

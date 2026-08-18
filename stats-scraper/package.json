@@ -14,10 +14,12 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.45",
+    "@ai-sdk/mistral": "^4.0.29",
     "@mantine/core": "^7.14.3",
     "@mantine/hooks": "^7.14.3",
-    "@node-llm/core": "^1.17.0",
     "@tailwindcss/vite": "^4.3.3",
+    "ai": "^7.0.68",
     "plotly.js": "^3.1.0",
     "preact": "^10.29.8",
     "react-plotly.js": "^2.6.0",

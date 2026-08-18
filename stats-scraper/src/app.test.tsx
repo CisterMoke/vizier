@@ -10,7 +10,7 @@ const mapCanonicalSchemaMock = vi.fn()
 const generateInsightsMock = vi.fn()
 
 vi.mock('./services/llmProvider', () => ({
-  createBrowserLLMProvider: () => ({
+  createLLMProvider: () => ({
     mapCanonicalSchema: mapCanonicalSchemaMock,
     generateInsights: generateInsightsMock
   })
@@ -61,7 +61,7 @@ it('maps schema with llm and generates chart cards', async () => {
 
   renderApp()
 
-  fireEvent.input(screen.getByLabelText(/llm api key/i), { target: { value: 'demo-key' } })
+  fireEvent.input(screen.getByLabelText(/api key/i), { target: { value: 'demo-key' } })
   fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
   await waitFor(() => expect(mapCanonicalSchemaMock).toHaveBeenCalled())
