@@ -32,7 +32,7 @@ interface DataInputPanelProps {
   isGenerating: boolean
 }
 
-const MAX_FILE_SIZE_MB = 10
+const MAX_FILE_SIZE_MB = (import.meta.env.VITE_MAX_FILE_SIZE_MB as number)
 
 export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
