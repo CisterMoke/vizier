@@ -7,6 +7,8 @@ REST API calls use aiohttp, data parsing uses pandas.
 
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -17,6 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import infer_model, parse_model_id
+from pydantic_ai.providers import infer_provider_class
+
+sys.path.append(str(Path(__file__).parents[1]))
 
 from backend.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 
@@ -34,21 +40,20 @@ app.add_middleware(
 
 # --- LLM configuration (server-side only) ---
 
-_LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "google")
-_LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+_LLM_MODEL = os.getenv("LLM_MODEL", "google:gemini-3.5-flash-lite")
 
 
 # --- Rate limiting ---
 
 _per_ip_config = RateLimitConfig(
-    max_requests=int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "10")),
-    window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60")),
+    max_requests=int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "10")),
+    window_seconds=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")),
 )
 _per_ip_limiter = RateLimiter(_per_ip_config)
 
 _global_config = RateLimitConfig(
-    max_requests=int(os.environ.get("GLOBAL_RATE_LIMIT_MAX_REQUESTS", "100")),
-    window_seconds=int(os.environ.get("GLOBAL_RATE_LIMIT_WINDOW_SECONDS", "60")),
+    max_requests=int(os.getenv("GLOBAL_RATE_LIMIT_MAX_REQUESTS", "100")),
+    window_seconds=int(os.getenv("GLOBAL_RATE_LIMIT_WINDOW_SECONDS", "60")),
 )
 _global_limiter = GlobalRateLimiter(_global_config)
 
@@ -172,22 +177,13 @@ class GenerateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-def _model_string(provider: str, model: str) -> str:
-    """Build pydantic-ai model string."""
-    if provider == "google":
-        return f"google-gla:{model}"
-    elif provider == "mistral":
-        return f"mistral:{model}"
-    raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-
-
 async def call_llm(system: str, prompt: str, output_type: type) -> dict:
     """Call LLM via pydantic-ai with structured output using server-side config."""
-    model_str = _model_string(_LLM_PROVIDER, _LLM_MODEL)
-    agent = Agent(model_str, system_prompt=system, output_type=output_type)
+    model = infer_model(_LLM_MODEL, lambda s: infer_provider_class(s)(api_key=os.getenv("LLM_API_KEY")))
+    agent = Agent(model, system_prompt=system, output_type=output_type)
 
     result = await agent.run(prompt)
-    return result.output.model_dump()
+    return result.output.model_dump(mode="json")
 
 
 # --- Data fetching ---
