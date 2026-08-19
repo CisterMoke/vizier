@@ -11,6 +11,7 @@ from typing import Any
 
 import aiohttp
 import pandas as pd
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,6 +19,9 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from server.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+
+# Load .env file before reading any env vars
+load_dotenv()
 
 app = FastAPI(title="Analytics Idea Lab LLM Proxy")
 
@@ -27,6 +31,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- LLM configuration (server-side only) ---
+
+_LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "google")
+_LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+
 
 # --- Rate limiting ---
 
@@ -149,8 +159,6 @@ class FieldMappingResult(BaseModel):
 
 class GenerateRequest(BaseModel):
     schema_text: str = Field(alias="schemaText")
-    provider: str = "google"
-    model: str = "gemini-2.0-flash"
     data_source_mode: str = Field(default="none", alias="dataSourceMode")
     file_content: str | None = Field(default=None, alias="fileContent")
     file_format: str | None = Field(default=None, alias="fileFormat")
@@ -173,9 +181,9 @@ def _model_string(provider: str, model: str) -> str:
     raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
 
-async def call_llm(provider: str, model: str, system: str, prompt: str, output_type: type) -> dict:
-    """Call LLM via pydantic-ai with structured output."""
-    model_str = _model_string(provider, model)
+async def call_llm(system: str, prompt: str, output_type: type) -> dict:
+    """Call LLM via pydantic-ai with structured output using server-side config."""
+    model_str = _model_string(_LLM_PROVIDER, _LLM_MODEL)
     agent = Agent(model_str, system_prompt=system, output_type=output_type)
 
     result = await agent.run(prompt)
@@ -219,7 +227,6 @@ async def generate(request: GenerateRequest) -> dict:
     """Full pipeline: map schema → generate insights → fetch real data → map fields."""
     # 1. Map schema
     schema = await call_llm(
-        request.provider, request.model,
         MAP_SCHEMA_PROMPT,
         f"Analyze this data description and extract the dataset schema:\n\n{request.schema_text}",
         DatasetSchema,
@@ -227,7 +234,6 @@ async def generate(request: GenerateRequest) -> dict:
 
     # 2. Generate insights
     insights = await call_llm(
-        request.provider, request.model,
         INSIGHT_PROMPT,
         f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}",
         InsightEnvelope,
@@ -270,7 +276,6 @@ async def generate(request: GenerateRequest) -> dict:
         ]
 
         mapping_result = await call_llm(
-            request.provider, request.model,
             FIELD_MAPPING_PROMPT,
             f"Insights with their chart axes:\n{json.dumps(insight_axes)}\n\n"
             f"Available real data columns:\n{json.dumps(real_data['columns'])}\n\n"

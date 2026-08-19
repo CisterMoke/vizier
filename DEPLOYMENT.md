@@ -24,16 +24,22 @@ uv sync
 ```
 
 ### Set environment variables
+
+Copy `.env.example` to `.env` and fill in your values:
+```bash
+cp .env.example .env
+```
+
+Or set them directly:
 ```bash
 export LLM_API_KEY="your-google-or-mistral-api-key"
-# Optional: change provider/model defaults
+# Provider and model (server-side only, not exposed to frontend)
 export LLM_PROVIDER="google"  # or "mistral"
 export LLM_MODEL="gemini-2.0-flash"
-# Optional: rate limiting
-# Per-IP limits (defaults: 10 requests per 60s)
+# Per-IP rate limits (defaults: 10 requests per 60s)
 export RATE_LIMIT_MAX_REQUESTS="10"
 export RATE_LIMIT_WINDOW_SECONDS="60"
-# Global limits across all users (defaults: 100 requests per 60s)
+# Global rate limits (defaults: 100 requests per 60s)
 export GLOBAL_RATE_LIMIT_MAX_REQUESTS="100"
 export GLOBAL_RATE_LIMIT_WINDOW_SECONDS="60"
 ```

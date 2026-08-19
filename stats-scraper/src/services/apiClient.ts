@@ -19,8 +19,6 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       schemaText: request.schemaText,
-      provider: 'google',
-      model: 'gemini-2.0-flash',
       dataSourceMode: request.dataSource.mode,
       fileContent: request.dataSource.fileContent,
       fileFormat: request.dataSource.fileFormat,
