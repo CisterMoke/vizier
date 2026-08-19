@@ -185,6 +185,13 @@ export const buildPlotlySpec = (
   const spec = insight.chartSpec
   const title = insight.title
 
+  if (!spec) {
+    return {
+      data: [],
+      layout: { ...darkLayout(title) }
+    }
+  }
+
   if (spec.mode === 'custom') {
     return buildCustomChart(spec, title)
   }

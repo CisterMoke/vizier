@@ -72,6 +72,10 @@ export function App() {
     const baseDataset = buildDatasetFromRaw(insight.id, rawData)
     const spec = insight.chartSpec
 
+    if (!spec) {
+      return baseDataset
+    }
+
     if (Object.keys(mappings).length === 0) {
       return {
         ...baseDataset,

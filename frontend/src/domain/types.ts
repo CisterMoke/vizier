@@ -69,9 +69,10 @@ export interface InsightCandidate {
   confidence: number
   hypothesis: string
   metricDescription: string
-  chartSpec: ChartSpec
-  dataProfile: DataProfile
+  chartSpec: ChartSpec | null
+  dataProfile: DataProfile | null
   assumptions: string[]
+  description?: string | null
 }
 
 export interface GeneratedDataset {

@@ -62,15 +62,16 @@ export const dataProfileSchema = z.object({
 })
 
 export const insightCandidateSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  summary: z.string().min(1),
-  confidence: z.number().min(0).max(1),
-  hypothesis: z.string().min(1),
-  metricDescription: z.string().min(1),
-  chartSpec: chartSpecSchema,
-  dataProfile: dataProfileSchema,
-  assumptions: z.array(z.string())
+  id: z.string().default(''),
+  title: z.string().default(''),
+  summary: z.string().default(''),
+  confidence: z.number().min(0).max(1).default(0.5),
+  hypothesis: z.string().default(''),
+  metricDescription: z.string().default(''),
+  chartSpec: chartSpecSchema.nullable().default(null),
+  dataProfile: dataProfileSchema.nullable().default(null),
+  assumptions: z.array(z.string()).default([]),
+  description: z.string().nullable().optional()
 })
 
 export const insightEnvelopeSchema = z.object({

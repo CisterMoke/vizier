@@ -146,14 +146,66 @@ FIELD_MAPPING_PROMPT = """You are a field mapping assistant. Given a list of ins
 
 # --- Pydantic output models ---
 
+class DatasetField(BaseModel):
+    name: str = ""
+    type: str = "string"
+    nullable: bool = False
+    semanticType: str | None = None
+    sampleValues: Any | None = None
+    unique: bool | None = None
+    group: str | None = None
+
+
 class DatasetSchema(BaseModel):
     source: str
-    fields: list[dict[str, Any]]
-    warnings: list[str]
+    fields: list[DatasetField]
+    warnings: list[str] = []
+
+
+class ChartSpec(BaseModel):
+    mode: str = "recipe"
+    chartType: str | None = None
+    xAxis: str | None = None
+    yAxis: str | None = None
+    zAxis: str | None = None
+    plotlyData: list[Any] | None = None
+    plotlyLayout: dict[str, Any] | None = None
+
+
+class DataColumnSpec(BaseModel):
+    name: str = ""
+    generator: str = "uniform"
+    categories: list[str] | None = None
+    min: float | None = None
+    max: float | None = None
+    mean: float | None = None
+    stddev: float | None = None
+    start: float | None = None
+    end: float | None = None
+    step: float | None = None
+    value: Any | None = None
+
+
+class DataProfile(BaseModel):
+    rowCount: int = 100
+    columns: list[DataColumnSpec] = []
+
+
+class InsightCandidate(BaseModel):
+    id: str = ""
+    title: str = ""
+    summary: str = ""
+    confidence: float = 0.5
+    hypothesis: str = ""
+    metricDescription: str = ""
+    chartSpec: ChartSpec | None = None
+    dataProfile: DataProfile | None = None
+    assumptions: list[str] = []
+    description: str | None = None  # LLM sometimes returns this instead of summary
 
 
 class InsightEnvelope(BaseModel):
-    insights: list[dict[str, Any]]
+    insights: list[InsightCandidate]
 
 
 class FieldMappingResult(BaseModel):
@@ -177,13 +229,28 @@ class GenerateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-async def call_llm(system: str, prompt: str, output_type: type) -> dict:
-    """Call LLM via pydantic-ai with structured output using server-side config."""
-    model = infer_model(_LLM_MODEL, lambda s: infer_provider_class(s)(api_key=os.getenv("LLM_API_KEY")))
-    agent = Agent(model, system_prompt=system, output_type=output_type)
+async def call_llm(system: str, prompt: str, output_type: type, retry_prompt: str | None = None) -> dict:
+    """Call LLM via pydantic-ai with structured output using server-side config.
 
-    result = await agent.run(prompt)
-    return result.output.model_dump(mode="json")
+    Retries once with a simpler prompt if validation fails.
+    """
+    model = infer_model(_LLM_MODEL, lambda s: infer_provider_class(s)(api_key=os.getenv("LLM_API_KEY")))
+
+    try:
+        agent = Agent(model, system_prompt=system, output_type=output_type)
+        result = await agent.run(prompt)
+        return result.output.model_dump(mode="json")
+    except Exception as first_error:
+        print(f"[LLM] First attempt failed: {first_error}", file=sys.stderr)
+        if retry_prompt:
+            print("[LLM] Retrying with simplified prompt...", file=sys.stderr)
+            try:
+                retry_agent = Agent(model, system_prompt=system, output_type=output_type)
+                result = await retry_agent.run(retry_prompt)
+                return result.output.model_dump(mode="json")
+            except Exception as retry_error:
+                print(f"[LLM] Retry also failed: {retry_error}", file=sys.stderr)
+        raise first_error
 
 
 # --- Data fetching ---
@@ -233,6 +300,13 @@ async def generate(request: GenerateRequest) -> dict:
         INSIGHT_PROMPT,
         f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}",
         InsightEnvelope,
+        retry_prompt=(
+            f"Generate 5 analytics insights for this schema. Each insight MUST have all fields: "
+            f'id, title, summary, confidence (0-1), hypothesis, metricDescription, '
+            f'chartSpec (with mode="recipe", chartType, xAxis, yAxis), '
+            f'dataProfile (with rowCount and columns, each column needs name and generator), '
+            f'and assumptions (array of strings).\n\nSchema: {json.dumps(schema)}'
+        ),
     )
 
     # 3. Fetch real data if requested
