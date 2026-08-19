@@ -8,6 +8,8 @@ import { generateInsightCandidates } from './services/insightGeneration'
 import { createLLMProvider } from './services/llmProvider'
 import type { ProviderId } from './services/llmProvider'
 import { generateMockDataset } from './services/mockData'
+import { parseRawData, buildDatasetFromRaw } from './services/dataIngest'
+import type { RawDataResult } from './domain/types'
 import { useWorkspaceStore } from './store/workspaceStore'
 
 const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to generate analytics.'
@@ -24,14 +26,16 @@ export function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const [hasRealData, setHasRealData] = useState(false)
   const regenerateCounters = useRef<Record<string, number>>({})
 
-  const handleGenerate = async (rawText: string) => {
+  const handleGenerate = async (rawText: string, rawDataText?: string) => {
     workspace.setRawSchema(rawText)
     workspace.setInsights([])
     workspace.setDatasetSchema({ source: '', fields: [], warnings: [] })
     setGenerationError(null)
     setStatusMessage(null)
+    setHasRealData(false)
 
     if (apiKey.trim().length === 0) {
       setGenerationError(API_KEY_REQUIRED_MESSAGE)
@@ -51,6 +55,32 @@ export function App() {
       const nextInsights = await generateInsightCandidates(schema, llm)
 
       workspace.setInsights(nextInsights)
+
+      let parsedRawData: RawDataResult | null = null
+
+      if (rawDataText && rawDataText.trim().length > 0) {
+        setStatusMessage('Parsing real data...')
+        parsedRawData = parseRawData(rawDataText)
+
+        if (parsedRawData.format === 'unknown' || parsedRawData.rowCount === 0) {
+          setStatusMessage('Could not parse real data, using mock data instead...')
+          parsedRawData = null
+        } else {
+          setStatusMessage('Mapping real data fields to charts...')
+          const mappingResult = await llm.mapFields(nextInsights, parsedRawData.columns)
+
+          nextInsights.forEach((insight) => {
+            const mapping = mappingResult.mappings.find((m) => m.insightId === insight.id)
+            const mappedDataset = applyFieldMapping(insight, parsedRawData!, mapping?.mappings ?? {})
+            workspace.attachDataset(insight.id, mappedDataset)
+          })
+
+          setHasRealData(true)
+          setStatusMessage(null)
+          return
+        }
+      }
+
       nextInsights.forEach((insight, index) => {
         workspace.attachDataset(
           insight.id,
@@ -71,11 +101,53 @@ export function App() {
     }
   }
 
+  const applyFieldMapping = (
+    insight: import('./domain/types').InsightCandidate,
+    rawData: RawDataResult,
+    mappings: Record<string, string>
+  ): import('./domain/types').GeneratedDataset => {
+    const baseDataset = buildDatasetFromRaw(insight.id, rawData)
+
+    if (Object.keys(mappings).length === 0) {
+      const spec = insight.chartSpec
+      return {
+        ...baseDataset,
+        rows: rawData.rows.map((row) => ({
+          [spec.xAxis ?? 'x']: row[rawData.columns[0] ?? ''],
+          [spec.yAxis ?? 'y']: row[rawData.columns[1] ?? ''],
+          ...(spec.zAxis ? { [spec.zAxis]: row[rawData.columns[2] ?? ''] } : {})
+        })),
+        columns: [spec.xAxis ?? 'x', spec.yAxis ?? 'y', ...(spec.zAxis ? [spec.zAxis] : [])].filter(Boolean) as string[]
+      }
+    }
+
+    const spec = insight.chartSpec
+    const xKey = mappings.xAxis ?? spec.xAxis ?? rawData.columns[0] ?? ''
+    const yKey = mappings.yAxis ?? spec.yAxis ?? rawData.columns[1] ?? ''
+    const zKey = spec.zAxis ? (mappings.zAxis ?? rawData.columns[2] ?? '') : undefined
+
+    return {
+      ...baseDataset,
+      rows: rawData.rows.map((row) => {
+        const mapped: Record<string, unknown> = {}
+        if (spec.xAxis) mapped[spec.xAxis] = row[xKey]
+        if (spec.yAxis) mapped[spec.yAxis] = row[yKey]
+        if (zKey && spec.zAxis) mapped[spec.zAxis] = row[zKey]
+        return mapped
+      }),
+      columns: [spec.xAxis, spec.yAxis, spec.zAxis].filter(Boolean) as string[]
+    }
+  }
+
   const handleRegenerateCard = (insightId: string) => {
     const insight = workspace.insights.find((item) => item.id === insightId)
     const insightIndex = workspace.insights.findIndex((item) => item.id === insightId)
 
     if (!insight || insightIndex < 0) {
+      return
+    }
+
+    if (hasRealData) {
       return
     }
 
@@ -148,6 +220,12 @@ export function App() {
           ) : null}
 
           <SchemaInputPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
+
+          {hasRealData ? (
+            <Text c="green" size="sm" fw={500}>
+              Charts rendered with real data
+            </Text>
+          ) : null}
 
           <ChartCarousel
             insights={workspace.insights}

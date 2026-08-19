@@ -7,21 +7,22 @@ vi.mock('react-plotly.js', () => ({
 
 const mapSchemaMock = vi.fn()
 const generateInsightsMock = vi.fn()
+const mapFieldsMock = vi.fn()
 
 vi.mock('./services/llmProvider', () => ({
   createLLMProvider: () => ({
     mapSchema: mapSchemaMock,
-    generateInsights: generateInsightsMock
+    generateInsights: generateInsightsMock,
+    mapFields: mapFieldsMock
   })
 }))
-
-vi.stubGlobal('import', { meta: { env: { VITE_LLM_API_KEY: 'test-key', VITE_LLM_PROVIDER: 'google', VITE_LLM_MODEL: 'gemini-2.0-flash' } } })
 
 import { App } from './app'
 
 beforeEach(() => {
   mapSchemaMock.mockReset()
   generateInsightsMock.mockReset()
+  mapFieldsMock.mockReset()
 })
 
 const renderApp = () => render(<MantineProvider><App /></MantineProvider>)
@@ -68,7 +69,7 @@ it('chains schema mapping and insight generation in a single click', async () =>
     }
   ])
 
-  const { container } = renderApp()
+  renderApp()
 
   fireEvent.input(screen.getByLabelText(/data description/i), {
     target: { value: 'orders(id int, total decimal)' }

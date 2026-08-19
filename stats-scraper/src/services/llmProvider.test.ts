@@ -83,3 +83,27 @@ it('uses mistral provider with structured output for insight generation', async 
   expect(insights[0].dataProfile.columns).toHaveLength(2)
   expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
 })
+
+it('maps fields from real data columns to chart axes', async () => {
+  vi.mocked(generateText).mockResolvedValue({
+    output: {
+      mappings: [
+        {
+          insightId: 'ins-1',
+          mappings: { xAxis: 'created_date', yAxis: 'order_total' }
+        }
+      ]
+    }
+  } as unknown as Awaited<ReturnType<typeof generateText>>)
+
+  const llm = createLLMProvider({ apiKey: 'demo-key', provider: 'google', model: 'gemini-2.0-flash' })
+  const result = await llm.mapFields(
+    [{ id: 'ins-1', title: 'test', summary: 's', confidence: 0.9, hypothesis: 'h', metricDescription: 'm', chartSpec: { mode: 'recipe', chartType: 'line', xAxis: 'week', yAxis: 'revenue' }, dataProfile: { rowCount: 10, columns: [] }, assumptions: [] }],
+    ['created_date', 'order_total', 'customer_name']
+  )
+
+  expect(result.mappings).toHaveLength(1)
+  expect(result.mappings[0].mappings.xAxis).toBe('created_date')
+  expect(result.mappings[0].mappings.yAxis).toBe('order_total')
+  expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1)
+})

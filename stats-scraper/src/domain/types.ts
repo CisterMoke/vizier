@@ -88,3 +88,21 @@ export interface ChartCard {
   datasetId: string
   insightId?: string
 }
+
+export type DataFormat = 'csv' | 'json' | 'jsonl' | 'unknown'
+
+export interface RawDataResult {
+  format: DataFormat
+  columns: string[]
+  rows: Record<string, unknown>[]
+  rowCount: number
+}
+
+export interface FieldMapping {
+  insightId: string
+  mappings: Record<string, string>
+}
+
+export interface FieldMappingResult {
+  mappings: FieldMapping[]
+}

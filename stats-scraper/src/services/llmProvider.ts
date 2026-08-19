@@ -1,8 +1,8 @@
 import { generateText, Output, NoObjectGeneratedError } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
-import { datasetSchemaSchema, insightEnvelopeSchema, parseDatasetSchema, parseInsightEnvelope } from '../domain/schemas'
-import type { DatasetSchema, InsightCandidate } from '../domain/types'
+import { datasetSchemaSchema, insightEnvelopeSchema, fieldMappingResultSchema, parseDatasetSchema, parseInsightEnvelope, parseFieldMappingResult } from '../domain/schemas'
+import type { DatasetSchema, FieldMappingResult, InsightCandidate } from '../domain/types'
 
 export type ProviderId = 'google' | 'mistral'
 
@@ -20,6 +20,7 @@ export interface LLMProviderConfig {
 export interface LLMProvider {
   mapSchema: (rawText: string) => Promise<DatasetSchema>
   generateInsights: (input: InsightPromptInput) => Promise<InsightCandidate[]>
+  mapFields: (insights: InsightCandidate[], rawColumns: string[]) => Promise<FieldMappingResult>
 }
 
 const MAP_SCHEMA_PROMPT = `You are a data schema analyzer. Given free-form text (SQL DDL, CSV headers, JSON, OpenAPI spec, scraped HTML, or any data description), extract a flat list of fields with their types and semantics.
@@ -140,6 +141,34 @@ export const createLLMProvider = (config: LLMProviderConfig): LLMProvider => {
       )
 
       return parseInsightEnvelope(output).insights
+    },
+    mapFields: async (insights: InsightCandidate[], rawColumns: string[]): Promise<FieldMappingResult> => {
+      const model = createModel(config)
+      const insightAxisInfo = insights.map((insight) => ({
+        insightId: insight.id,
+        chartType: insight.chartSpec.chartType,
+        xAxis: insight.chartSpec.xAxis,
+        yAxis: insight.chartSpec.yAxis,
+        zAxis: insight.chartSpec.zAxis
+      }))
+
+      const output = await safeGenerate(
+        () => generateText({
+          model,
+          output: Output.object({ schema: fieldMappingResultSchema }),
+          system: 'You are a field mapping assistant. Given a list of insights with their chart axis column names (from mock data profiles) and a list of real data column names, map each insight\'s axis columns to the best matching real column. Return a mappings array where each entry has insightId and a mappings object mapping axis names to real column names.',
+          prompt: `Insights with their chart axes:\n${JSON.stringify(insightAxisInfo)}\n\nAvailable real data columns:\n${JSON.stringify(rawColumns)}\n\nFor each insight, map xAxis, yAxis, and zAxis (if present) to the most appropriate real column name. Return { "mappings": [{ "insightId": "...", "mappings": { "xAxis": "real_col", "yAxis": "real_col", "zAxis": "real_col" } }] }.`
+        }),
+        () => generateText({
+          model,
+          output: Output.object({ schema: fieldMappingResultSchema }),
+          system: 'Map chart axis columns to real data columns. Return { "mappings": [{ "insightId": "...", "mappings": { "xAxis": "col", "yAxis": "col" } }] }.',
+          prompt: `Insights: ${JSON.stringify(insightAxisInfo)}\nReal columns: ${JSON.stringify(rawColumns)}`
+        }),
+        'field-mapping'
+      )
+
+      return parseFieldMappingResult(output)
     }
   }
 }

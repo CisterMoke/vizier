@@ -79,3 +79,14 @@ export const insightEnvelopeSchema = z.object({
 
 export const parseDatasetSchema = (input: unknown) => datasetSchemaSchema.parse(input)
 export const parseInsightEnvelope = (input: unknown) => insightEnvelopeSchema.parse(input)
+
+const fieldMappingSchema = z.object({
+  insightId: z.string().min(1),
+  mappings: z.record(z.string(), z.string())
+})
+
+export const fieldMappingResultSchema = z.object({
+  mappings: z.array(fieldMappingSchema)
+})
+
+export const parseFieldMappingResult = (input: unknown) => fieldMappingResultSchema.parse(input)

@@ -13,7 +13,7 @@ it('submits data description through the generate callback', () => {
   })
   fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
 
-  expect(onGenerate).toHaveBeenCalledWith('orders(id int, total decimal)')
+  expect(onGenerate).toHaveBeenCalledWith('orders(id int, total decimal)', undefined)
 })
 
 it('does not submit when textarea is empty', () => {
