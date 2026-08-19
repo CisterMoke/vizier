@@ -13,8 +13,15 @@ const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'htt
 async function parseResponse(response: Response): Promise<GenerateResponse> {
   const raw = await response.json()
 
+  const schema = parseDatasetSchema(raw.schema)
+
+  schema.fields = schema.fields.map((field) => ({
+    ...field,
+    jsonPath: field.jsonPath ?? `$.${field.name}`
+  }))
+
   return {
-    schema: parseDatasetSchema(raw.schema),
+    schema,
     insights: parseInsightEnvelope(raw.insights).insights,
     realData: raw.realData ?? null
   }
