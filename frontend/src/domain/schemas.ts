@@ -72,16 +72,15 @@ const dataColumnSpecSchema = z.object({
 })
 
 export const dataProfileSchema = z.object({
-  rowCount: z.number().int().min(1).max(10000),
   columns: z.array(dataColumnSpecSchema)
 })
 
 export const insightCandidateSchema = z.object({
-  id: z.string().default(''),
-  title: z.string().default(''),
-  summary: z.string().default(''),
+  id: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
   confidence: z.number().min(0).max(1).default(0.5),
-  hypothesis: z.string().default(''),
+  hypothesis: z.string().min(1),
   metricDescription: z.string().default(''),
   chartSpec: chartSpecSchema,
   dataProfile: dataProfileSchema.nullable().default(null),

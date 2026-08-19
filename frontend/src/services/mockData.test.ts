@@ -20,12 +20,11 @@ const mockInsight: InsightCandidate = {
   metricDescription: 'Share of repeat customers by week.',
   chartSpec: {
     mode: 'recipe',
-    chartType: 'line',
-    xAxis: '$.week',
-    yAxis: '$.repeat_rate'
+    traces: [
+      { chartType: 'line', xAxis: '$.week', yAxis: '$.repeat_rate' }
+    ]
   },
   dataProfile: {
-    rowCount: 52,
     columns: [
       { name: '$.week', generator: 'linear', start: 1, end: 52, step: 1 },
       { name: '$.repeat_rate', generator: 'normal', mean: 0.4, stddev: 0.1, min: 0, max: 1 }
@@ -58,7 +57,6 @@ it('generates category values from the categories array', () => {
   const categoryInsight: InsightCandidate = {
     ...mockInsight,
     dataProfile: {
-      rowCount: 10,
       columns: [
         { name: '$.segment', generator: 'category', categories: ['A', 'B', 'C'] },
         { name: '$.value', generator: 'uniform', min: 10, max: 100 }
@@ -75,7 +73,6 @@ it('generates constant values', () => {
   const constantInsight: InsightCandidate = {
     ...mockInsight,
     dataProfile: {
-      rowCount: 5,
       columns: [
         { name: '$.label', generator: 'constant', value: 'fixed' }
       ]
@@ -91,7 +88,6 @@ it('handles plain column names (non-JSONPath) as fallback', () => {
   const plainInsight: InsightCandidate = {
     ...mockInsight,
     dataProfile: {
-      rowCount: 5,
       columns: [
         { name: 'category', generator: 'category', categories: ['X', 'Y'] }
       ]

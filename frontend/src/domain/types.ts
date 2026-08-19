@@ -77,7 +77,6 @@ export interface DataColumnSpec {
 }
 
 export interface DataProfile {
-  rowCount: number
   columns: DataColumnSpec[]
 }
 

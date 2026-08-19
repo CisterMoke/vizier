@@ -18,15 +18,14 @@ const payload: ExportPayload = {
       metricDescription: 'Daily order count.',
       chartSpec: {
         mode: 'recipe',
-        chartType: 'line',
-        xAxis: 'day',
-        yAxis: 'count'
+        traces: [
+          { chartType: 'line', xAxis: '$.day', yAxis: '$.count' }
+        ]
       },
       dataProfile: {
-        rowCount: 30,
         columns: [
-          { name: 'day', generator: 'linear', start: 1, end: 30, step: 1 },
-          { name: 'count', generator: 'normal', mean: 100, stddev: 20, min: 50, max: 200 }
+          { name: '$.day', generator: 'linear', start: 1, end: 30, step: 1 },
+          { name: '$.count', generator: 'normal', mean: 100, stddev: 20, min: 50, max: 200 }
         ]
       },
       assumptions: ['Order dates are present.']

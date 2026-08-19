@@ -27,7 +27,6 @@ const mockBarInsight: InsightCandidate = {
     ]
   },
   dataProfile: {
-    rowCount: 4,
     columns: [
       { name: '$.category', generator: 'category', categories: ['A', 'B', 'C', 'D'] },
       { name: '$.revenue', generator: 'uniform', min: 100, max: 500 }

@@ -1,5 +1,7 @@
 import type { DataColumnSpec, DatasetSchema, GeneratedDataset, InsightCandidate } from '../domain/types'
 
+const MOCK_ROW_COUNT = 200
+
 type MockDataOptions = {
   seed?: number
   rowCount?: number
@@ -80,7 +82,7 @@ export const generateMockDataset = (
 ): GeneratedDataset => {
   const seed = opts.seed ?? 1337
   const profile = insight.dataProfile
-  const rowCount = opts.rowCount ?? profile?.rowCount ?? 200
+  const rowCount = opts.rowCount ?? MOCK_ROW_COUNT
   const random = createSeededRandom(seed)
   const columns = profile?.columns ?? []
   const columnNames = columns.map((col) => col.name)

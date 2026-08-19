@@ -50,9 +50,8 @@ it('calls backend API on generate and renders chart cards', async () => {
           { chartType: 'line', xAxis: '$.week', yAxis: '$.order_count' }
         ]
       },
-        dataProfile: {
-          rowCount: 12,
-          columns: [
+      dataProfile: {
+        columns: [
             { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
             { name: 'order_count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
           ]

@@ -191,13 +191,14 @@ MULTI-TRACE EXAMPLE (overlay with dual axis):
     ]
   }
 
-Provide a dataProfile with rowCount and columns. Each column must have a "generator" field:
+Provide a dataProfile with columns. Each column must have a "generator" field:
   - "category": include "categories" array
   - "normal": include "mean" and "stddev", optionally "min" and "max"
   - "uniform": include "min" and "max"
   - "linear": include "start", "end", and "step"
   - "constant": include "value"
 Column names in dataProfile must be jsonPath strings matching the chartSpec trace xAxis/yAxis/zAxis values.
+Each insight MUST have a non-empty id, title, summary, and hypothesis. Do not leave any of these fields empty or null.
 Return practical, visually interesting ideas with concise reasoning."""
 
 # --- Pydantic output models ---
@@ -258,7 +259,6 @@ class DataColumnSpec(BaseModel):
 
 
 class DataProfile(BaseModel):
-    rowCount: int = 100
     columns: list[DataColumnSpec] = []
 
 

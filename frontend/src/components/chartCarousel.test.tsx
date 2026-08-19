@@ -24,10 +24,9 @@ const insights: InsightCandidate[] = [
       ]
     },
     dataProfile: {
-      rowCount: 4,
       columns: [
-        { name: 'category', generator: 'category', categories: ['A', 'B', 'C', 'D'] },
-        { name: 'revenue', generator: 'uniform', min: 100, max: 500 }
+        { name: '$.category', generator: 'category', categories: ['A', 'B', 'C', 'D'] },
+        { name: '$.revenue', generator: 'uniform', min: 100, max: 500 }
       ]
     },
     assumptions: ['Revenue values are numeric and complete.']
@@ -46,10 +45,9 @@ const insights: InsightCandidate[] = [
       ]
     },
     dataProfile: {
-      rowCount: 12,
       columns: [
-        { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
-        { name: 'count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
+        { name: '$.week', generator: 'linear', start: 1, end: 12, step: 1 },
+        { name: '$.count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
       ]
     },
     assumptions: ['Weeks are sequential.']

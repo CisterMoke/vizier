@@ -20,15 +20,14 @@ const mockInsight: InsightCandidate = {
   metricDescription: 'Weekly total revenue.',
   chartSpec: {
     mode: 'recipe',
-    chartType: 'line',
-    xAxis: 'week',
-    yAxis: 'revenue'
+    traces: [
+      { chartType: 'line', xAxis: '$.week', yAxis: '$.revenue' }
+    ]
   },
   dataProfile: {
-    rowCount: 52,
     columns: [
-      { name: 'week', generator: 'linear', start: 1, end: 52, step: 1 },
-      { name: 'revenue', generator: 'normal', mean: 500, stddev: 200, min: 0, max: 2000 }
+      { name: '$.week', generator: 'linear', start: 1, end: 52, step: 1 },
+      { name: '$.revenue', generator: 'normal', mean: 500, stddev: 200, min: 0, max: 2000 }
     ]
   },
   assumptions: ['Order totals are complete.']
