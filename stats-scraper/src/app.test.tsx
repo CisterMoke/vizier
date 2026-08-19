@@ -60,8 +60,8 @@ it('maps schema with llm and generates chart cards', async () => {
       chartSpec: {
         mode: 'recipe',
         chartType: 'line',
-        xAxis: { column: 'week', aggregation: 'none' },
-        yAxis: { column: 'order_count', aggregation: 'none' }
+        xAxis: 'week',
+        yAxis: 'order_count'
       },
       dataProfile: {
         rowCount: 12,

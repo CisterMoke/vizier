@@ -28,14 +28,11 @@ export interface DatasetSchema {
 
 export type ChartType = 'bar' | 'line' | 'pie' | 'scatter'
 
-export type Aggregation = 'sum' | 'count' | 'avg' | 'none'
-
 export interface ChartRecipe {
   mode: 'recipe'
   chartType: ChartType
-  xAxis: { column: string; aggregation: Aggregation }
-  yAxis: { column: string; aggregation: Aggregation }
-  groupBy?: string
+  xAxis: string
+  yAxis: string
 }
 
 export interface ChartCustom {

@@ -37,16 +37,16 @@ Include warnings for any fields you are uncertain about.`
 const INSIGHT_PROMPT = `You are an analytics brainstorming assistant. Given a dataset schema with field semantics and sample values, generate creative analytics hypotheses suitable for a hackathon demo.
 
 For each insight, provide:
-- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, or scatter), xAxis and yAxis with column names and aggregation (sum, count, avg, or none).
+- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, or scatter), xAxis (column name string), and yAxis (column name string).
 - A dataProfile specifying rowCount and column definitions. Each column must use one of these generators:
   - "category": provide categories array (e.g. ["Electronics", "Clothing", "Home"])
   - "normal": provide mean and stddev, optional min/max
   - "uniform": provide min and max
   - "linear": provide start, end, and step
   - "constant": provide value
-Column names in dataProfile must match the chartSpec axis columns.
+Column names in dataProfile must match the chartSpec xAxis and yAxis values.
+Do not include extra fields in column specs beyond what each generator needs.
 Use the field semanticType and sampleValues from the schema to make realistic choices.
-Keep it simple: always use mode "recipe" for chartSpec.
 Return practical, visually interesting ideas with concise reasoning.`
 
 const createModel = (config: LLMProviderConfig) => {

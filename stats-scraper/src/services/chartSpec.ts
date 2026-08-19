@@ -17,42 +17,36 @@ const toDatum = (value: unknown): Plotly.Datum => {
 }
 
 const buildBarChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const xColumn = recipe.xAxis.column
-  const yColumn = recipe.yAxis.column
-  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
-  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
+  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
+  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
 
   return {
     data: [{ type: 'bar', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis.column } },
-      yaxis: { title: { text: recipe.yAxis.column } }
+      xaxis: { title: { text: recipe.xAxis } },
+      yaxis: { title: { text: recipe.yAxis } }
     }
   }
 }
 
 const buildLineChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const xColumn = recipe.xAxis.column
-  const yColumn = recipe.yAxis.column
-  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
-  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
+  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
+  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
 
   return {
     data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis.column } },
-      yaxis: { title: { text: recipe.yAxis.column } }
+      xaxis: { title: { text: recipe.xAxis } },
+      yaxis: { title: { text: recipe.yAxis } }
     }
   }
 }
 
 const buildPieChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const labelColumn = recipe.xAxis.column
-  const valueColumn = recipe.yAxis.column
-  const labels = dataset.rows.map((row) => toDatum(row[labelColumn]))
-  const values = dataset.rows.map((row) => toDatum(row[valueColumn]))
+  const labels = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
+  const values = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
 
   return {
     data: [{ type: 'pie', labels, values }],
@@ -61,17 +55,15 @@ const buildPieChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: st
 }
 
 const buildScatterChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const xColumn = recipe.xAxis.column
-  const yColumn = recipe.yAxis.column
-  const x = dataset.rows.map((row) => toDatum(row[xColumn]))
-  const y = dataset.rows.map((row) => toDatum(row[yColumn]))
+  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
+  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
 
   return {
     data: [{ type: 'scatter', mode: 'markers', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis.column } },
-      yaxis: { title: { text: recipe.yAxis.column } }
+      xaxis: { title: { text: recipe.xAxis } },
+      yaxis: { title: { text: recipe.yAxis } }
     }
   }
 }

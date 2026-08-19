@@ -29,14 +29,11 @@ export const datasetSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
-const aggregationSchema = z.enum(['sum', 'count', 'avg', 'none'])
-
 const chartRecipeSchema = z.object({
   mode: z.literal('recipe'),
   chartType: z.enum(['bar', 'line', 'pie', 'scatter']),
-  xAxis: z.object({ column: z.string().min(1), aggregation: aggregationSchema }),
-  yAxis: z.object({ column: z.string().min(1), aggregation: aggregationSchema }),
-  groupBy: z.string().optional()
+  xAxis: z.string().min(1),
+  yAxis: z.string().min(1)
 })
 
 const chartCustomSchema = z.object({

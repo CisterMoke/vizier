@@ -35,8 +35,8 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     chartSpec: {
       mode: 'recipe',
       chartType: 'bar',
-      xAxis: { column: 'tier', aggregation: 'none' },
-      yAxis: { column: 'revenue', aggregation: 'sum' }
+      xAxis: 'tier',
+      yAxis: 'revenue'
     },
     dataProfile: {
       rowCount: 100,
@@ -57,8 +57,8 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     chartSpec: {
       mode: 'recipe',
       chartType: 'line',
-      xAxis: { column: 'week', aggregation: 'none' },
-      yAxis: { column: 'order_count', aggregation: 'none' }
+      xAxis: 'week',
+      yAxis: 'order_count'
     },
     dataProfile: {
       rowCount: 52,
@@ -79,8 +79,8 @@ export const FALLBACK_INSIGHTS: InsightCandidate[] = [
     chartSpec: {
       mode: 'recipe',
       chartType: 'pie',
-      xAxis: { column: 'segment', aggregation: 'none' },
-      yAxis: { column: 'revenue', aggregation: 'sum' }
+      xAxis: 'segment',
+      yAxis: 'revenue'
     },
     dataProfile: {
       rowCount: 5,

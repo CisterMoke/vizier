@@ -20,8 +20,8 @@ const mockInsight: InsightCandidate = {
   chartSpec: {
     mode: 'recipe',
     chartType: 'bar',
-    xAxis: { column: 'segment', aggregation: 'none' },
-    yAxis: { column: 'aov', aggregation: 'avg' }
+    xAxis: 'segment',
+    yAxis: 'aov'
   },
   dataProfile: {
     rowCount: 50,

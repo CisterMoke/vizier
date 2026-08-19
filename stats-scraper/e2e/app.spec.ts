@@ -52,8 +52,8 @@ test('end-to-end flow from schema paste to report export', async ({ page }) => {
               chartSpec: {
                 mode: 'recipe',
                 chartType: 'line',
-                xAxis: { column: 'week', aggregation: 'none' },
-                yAxis: { column: 'order_count', aggregation: 'none' }
+                xAxis: 'week',
+                yAxis: 'order_count'
               },
               dataProfile: {
                 rowCount: 12,

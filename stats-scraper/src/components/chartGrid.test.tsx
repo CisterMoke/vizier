@@ -20,8 +20,8 @@ const insights: InsightCandidate[] = [
     chartSpec: {
       mode: 'recipe',
       chartType: 'bar',
-      xAxis: { column: 'category', aggregation: 'none' },
-      yAxis: { column: 'revenue', aggregation: 'sum' }
+      xAxis: 'category',
+      yAxis: 'revenue'
     },
     dataProfile: {
       rowCount: 4,

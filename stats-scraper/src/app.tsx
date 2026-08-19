@@ -14,11 +14,15 @@ import { useWorkspaceStore } from './store/workspaceStore'
 
 const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to run AI schema mapping.'
 
+const envApiKey = (import.meta.env.VITE_LLM_API_KEY as string) || ''
+const envProvider = ((import.meta.env.VITE_LLM_PROVIDER as string) || 'google') as ProviderId
+const envModel = (import.meta.env.VITE_LLM_MODEL as string) || (envProvider === 'google' ? 'gemini-2.0-flash' : 'mistral-large-latest')
+
 export function App() {
   const workspace = useWorkspaceStore()
-  const [apiKey, setApiKey] = useState('')
-  const [provider, setProvider] = useState<ProviderId>('google')
-  const [model, setModel] = useState('gemini-2.0-flash')
+  const [apiKey, setApiKey] = useState(envApiKey)
+  const [provider, setProvider] = useState<ProviderId>(envProvider)
+  const [model, setModel] = useState(envModel)
   const [isMapping, setIsMapping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)

@@ -3,7 +3,10 @@ import type { DatasetSchema } from '../domain/types'
 
 vi.mock('ai', () => ({
   generateText: vi.fn(),
-  Output: { object: (opts: unknown) => opts }
+  Output: { object: (opts: unknown) => opts },
+  NoObjectGeneratedError: class NoObjectGeneratedError extends Error {
+    static isInstance(e: unknown) { return e instanceof NoObjectGeneratedError }
+  }
 }))
 
 vi.mock('@ai-sdk/google', () => ({
@@ -56,8 +59,8 @@ it('uses mistral provider with structured output for insight generation', async 
           chartSpec: {
             mode: 'recipe',
             chartType: 'line',
-            xAxis: { column: 'week', aggregation: 'none' },
-            yAxis: { column: 'order_count', aggregation: 'none' }
+            xAxis: 'week',
+            yAxis: 'order_count'
           },
           dataProfile: {
             rowCount: 52,

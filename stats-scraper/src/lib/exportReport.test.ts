@@ -19,8 +19,8 @@ const payload: ExportPayload = {
       chartSpec: {
         mode: 'recipe',
         chartType: 'line',
-        xAxis: { column: 'day', aggregation: 'none' },
-        yAxis: { column: 'count', aggregation: 'count' }
+        xAxis: 'day',
+        yAxis: 'count'
       },
       dataProfile: {
         rowCount: 30,

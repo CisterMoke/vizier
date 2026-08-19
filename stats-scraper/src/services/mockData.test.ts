@@ -21,8 +21,8 @@ const mockInsight: InsightCandidate = {
   chartSpec: {
     mode: 'recipe',
     chartType: 'line',
-    xAxis: { column: 'week', aggregation: 'none' },
-    yAxis: { column: 'repeat_rate', aggregation: 'none' }
+    xAxis: 'week',
+    yAxis: 'repeat_rate'
   },
   dataProfile: {
     rowCount: 52,

@@ -12,8 +12,8 @@ const mockBarInsight: InsightCandidate = {
   chartSpec: {
     mode: 'recipe',
     chartType: 'bar',
-    xAxis: { column: 'category', aggregation: 'none' },
-    yAxis: { column: 'revenue', aggregation: 'sum' }
+    xAxis: 'category',
+    yAxis: 'revenue'
   },
   dataProfile: {
     rowCount: 4,
@@ -46,8 +46,8 @@ it('maps line chart recipe to a scatter trace with lines+markers', () => {
     chartSpec: {
       mode: 'recipe',
       chartType: 'line',
-      xAxis: { column: 'week', aggregation: 'none' },
-      yAxis: { column: 'count', aggregation: 'none' }
+      xAxis: 'week',
+      yAxis: 'count'
     }
   }
 
@@ -62,8 +62,8 @@ it('maps pie chart recipe to a pie trace', () => {
     chartSpec: {
       mode: 'recipe',
       chartType: 'pie',
-      xAxis: { column: 'segment', aggregation: 'none' },
-      yAxis: { column: 'share', aggregation: 'sum' }
+      xAxis: 'segment',
+      yAxis: 'share'
     }
   }
 
@@ -77,8 +77,8 @@ it('maps scatter chart recipe to a scatter trace with markers only', () => {
     chartSpec: {
       mode: 'recipe',
       chartType: 'scatter',
-      xAxis: { column: 'orders', aggregation: 'none' },
-      yAxis: { column: 'revenue', aggregation: 'none' }
+      xAxis: 'orders',
+      yAxis: 'revenue'
     }
   }
 
