@@ -38,14 +38,15 @@ const INSIGHT_PROMPT = `You are an analytics brainstorming assistant. Given a da
 
 For each insight, provide a chartSpec object that MUST include "mode": "recipe" as a field. Example:
   "chartSpec": { "mode": "recipe", "chartType": "bar", "xAxis": "category", "yAxis": "revenue" }
-- chartType can be: bar, line, pie, scatter, or heatmap.
-  - Use "heatmap" when the data has geographic coordinates (latitude/longitude). Provide xAxis as longitude, yAxis as latitude, and zAxis as the intensity measure.
+- chartType can be: bar, line, pie, scatter, heatmap, or geomap.
+  - Use "geomap" when the data has geographic coordinates (latitude/longitude fields). Provide xAxis as the longitude column, yAxis as the latitude column, and optionally zAxis as the intensity/value column. This renders points on a world map.
+  - Use "heatmap" for 2D density/intensity views when you need a grid-based heatmap (not geographic). Provide xAxis, yAxis, and zAxis for intensity.
   - Use "scatter" for correlation between two measures.
   - Use "bar" for categorical comparisons.
   - Use "line" for trends over time.
   - Use "pie" for share/proportion.
 - xAxis and yAxis must be column name strings from the schema.
-- zAxis is optional, only for heatmap intensity values.
+- zAxis is optional, for heatmap intensity or geomap point coloring.
 
 Provide a dataProfile with rowCount and columns. Each column must have a "generator" field:
   - "category": include "categories" array (e.g. ["Electronics", "Clothing", "Home"])

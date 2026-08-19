@@ -29,7 +29,7 @@ export interface DatasetSchema {
   warnings: string[]
 }
 
-export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap'
+export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap' | 'geomap'
 
 export interface ChartSpec {
   mode: 'recipe' | 'custom'

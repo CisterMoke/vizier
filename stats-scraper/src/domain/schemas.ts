@@ -34,7 +34,7 @@ export const datasetSchemaSchema = z.object({
 
 export const chartSpecSchema = z.object({
   mode: z.enum(['recipe', 'custom']).default('recipe'),
-  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap']).optional(),
+  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']).optional(),
   xAxis: z.string().optional(),
   yAxis: z.string().optional(),
   zAxis: z.string().optional(),

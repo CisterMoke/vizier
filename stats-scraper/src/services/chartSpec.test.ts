@@ -91,6 +91,26 @@ it('maps heatmap chart recipe to a heatmap trace', () => {
   expect(spec.data[0]?.type).toBe('heatmap')
 })
 
+it('maps geomap chart recipe to a scattergeo trace on a world map', () => {
+  const geomapInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: { mode: 'recipe', chartType: 'geomap', xAxis: 'lng', yAxis: 'lat', zAxis: 'score' }
+  }
+
+  const geoDataset: GeneratedDataset = {
+    ...mockDataset,
+    columns: ['lng', 'lat', 'score'],
+    rows: [
+      { lng: -74.0, lat: 40.7, score: 4.5 },
+      { lng: -118.2, lat: 34.0, score: 4.8 }
+    ]
+  }
+
+  const spec = buildPlotlySpec(geomapInsight, geoDataset)
+  expect(spec.data[0]?.type).toBe('scattergeo')
+  expect((spec.layout as { geo: { projection: { type: string } } }).geo.projection.type).toBe('natural earth')
+})
+
 it('passes through custom plotly spec directly', () => {
   const customInsight: InsightCandidate = {
     ...mockBarInsight,

@@ -90,6 +90,50 @@ const buildHeatmapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: st
   }
 }
 
+const buildGeomapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const lon = dataset.rows.map((row) => toNumber(row[spec.xAxis ?? '']))
+  const lat = dataset.rows.map((row) => toNumber(row[spec.yAxis ?? '']))
+  const z = spec.zAxis
+    ? dataset.rows.map((row) => toNumber(row[spec.zAxis!]))
+    : undefined
+
+  return {
+    data: [{
+      type: 'scattergeo',
+      mode: 'markers',
+      lon,
+      lat,
+      ...(z ? {
+        marker: {
+          size: 8,
+          color: z,
+          colorscale: 'Viridis',
+          showscale: true,
+          colorbar: { title: { text: spec.zAxis ?? '' } }
+        }
+      } : {
+        marker: { size: 8, color: '#22d3ee' }
+      })
+    }],
+    layout: {
+      title: { text: title },
+      geo: {
+        showland: true,
+        landcolor: 'rgb(17, 24, 39)',
+        showocean: true,
+        oceancolor: 'rgb(8, 12, 20)',
+        showcountries: true,
+        countrycolor: 'rgb(55, 65, 81)',
+        showcoastlines: true,
+        coastlinecolor: 'rgb(55, 65, 81)',
+        projection: { type: 'natural earth' }
+      },
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent'
+    }
+  }
+}
+
 const buildCustomChart = (spec: ChartSpec, _title: string): PlotlySpec => {
   const layout = (spec.plotlyLayout as Partial<Plotly.Layout>) ?? {}
   return {
@@ -123,6 +167,8 @@ export const buildPlotlySpec = (
       return buildScatterChart(spec, dataset, title)
     case 'heatmap':
       return buildHeatmapChart(spec, dataset, title)
+    case 'geomap':
+      return buildGeomapChart(spec, dataset, title)
     default:
       return buildBarChart(spec, dataset, title)
   }
