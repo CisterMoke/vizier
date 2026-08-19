@@ -69,6 +69,10 @@ const generateValue = (spec: DataColumnSpec, index: number, random: () => number
   }
 }
 
+const jsonPathToKey = (jsonPath: string): string => {
+  return jsonPath.replace(/^\$\.?/, '')
+}
+
 export const generateMockDataset = (
   _schema: DatasetSchema,
   insight: InsightCandidate,
@@ -85,7 +89,8 @@ export const generateMockDataset = (
     const row: Record<string, unknown> = {}
 
     for (const col of columns) {
-      row[col.name] = generateValue(col, rowIndex, random)
+      const key = jsonPathToKey(col.name)
+      row[key] = generateValue(col, rowIndex, random)
     }
 
     return row
