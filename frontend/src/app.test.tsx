@@ -44,12 +44,12 @@ it('calls backend API on generate and renders chart cards', async () => {
         confidence: 0.82,
         hypothesis: 'Orders climb weekly',
         metricDescription: 'Weekly order count',
-        chartSpec: {
-          mode: 'recipe',
-          chartType: 'line',
-          xAxis: 'week',
-          yAxis: 'order_count'
-        },
+      chartSpec: {
+        mode: 'recipe',
+        traces: [
+          { chartType: 'line', xAxis: '$.week', yAxis: '$.order_count' }
+        ]
+      },
         dataProfile: {
           rowCount: 12,
           columns: [

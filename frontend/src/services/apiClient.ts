@@ -73,3 +73,46 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
 
   return parseResponse(response)
 }
+
+export const applyData = async (request: GenerateRequest, backendUrl?: string): Promise<RawDataResult> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  if (request.dataSource.mode === 'file' && request.dataSource.file) {
+    const formData = new FormData()
+    formData.append('file', request.dataSource.file)
+    formData.append('fileFormat', request.dataSource.fileFormat ?? 'csv')
+
+    const response = await fetch(`${baseUrl}/api/apply-data-upload`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Backend error ${response.status}: ${errorText}`)
+    }
+
+    return await response.json()
+  }
+
+  const response = await fetch(`${baseUrl}/api/apply-data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dataSourceMode: request.dataSource.mode,
+      restMethod: request.dataSource.rest?.method,
+      restUrl: request.dataSource.rest?.url,
+      restHeaders: request.dataSource.rest?.headers,
+      restBody: request.dataSource.rest?.body,
+      sqlConnection: request.dataSource.sql?.connectionString,
+      sqlQuery: request.dataSource.sql?.query
+    })
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Backend error ${response.status}: ${errorText}`)
+  }
+
+  return await response.json()
+}

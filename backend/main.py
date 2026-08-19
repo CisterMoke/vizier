@@ -127,22 +127,28 @@ Include warnings for any fields you are uncertain about."""
 
 INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and jsonPath values, generate creative analytics hypotheses suitable for a hackathon demo.
 
-For each insight, provide a chartSpec object that MUST include "mode": "recipe".
+For each insight, provide a chartSpec object that MUST include "mode": "recipe" and a "traces" array.
 
-SINGLE-TRACE CHARTS (simple):
-  "chartSpec": { "mode": "recipe", "chartType": "bar", "xAxis": "$.category", "yAxis": "$.revenue" }
-  - xAxis and yAxis must be jsonPath strings from the schema fields.
-  - chartType can be: bar, line, pie, scatter, heatmap, or geomap.
-    - Use "geomap" when the data has geographic coordinates (latitude/longitude fields). Provide xAxis as the longitude jsonPath, yAxis as the latitude jsonPath, and optionally zAxis as the intensity/value jsonPath.
-    - Use "heatmap" for 2D density/intensity views.
-    - Use "scatter" for correlation between two measures.
-    - Use "bar" for categorical comparisons.
-    - Use "line" for trends over time.
-    - Use "pie" for share/proportion.
-  - zAxis is optional, for heatmap intensity or geomap point coloring.
+Each trace in the traces array has:
+- chartType: bar, line, pie, scatter, heatmap, or geomap
+  - Use "geomap" when the data has geographic coordinates (latitude/longitude fields). Provide xAxis as the longitude jsonPath, yAxis as the latitude jsonPath, and optionally zAxis as the intensity/value jsonPath.
+  - Use "heatmap" for 2D density/intensity views.
+  - Use "scatter" for correlation between two measures.
+  - Use "bar" for categorical comparisons.
+  - Use "line" for trends over time.
+  - Use "pie" for share/proportion.
+- xAxis: a jsonPath string from the schema fields (e.g. "$.county")
+- yAxis: a jsonPath string from the schema fields (e.g. "$.dol_vehicle_id")
+- zAxis: optional, for heatmap intensity or geomap point coloring (jsonPath string)
+- aggregation: optional, one of "sum", "mean", "count", "min", "max", "median", "first", "last"
+  - When you want to aggregate Y values by X (e.g. count of vehicles by county, sum of revenue by category, average range by make), set aggregation to the appropriate function.
+  - Count: "aggregation": "count" (counts rows per X category)
+  - Sum: "aggregation": "sum" (sums Y values per X category)
+  - Mean: "aggregation": "mean" (averages Y values per X category)
+- yaxis2: set to "y2" to use a secondary y-axis (for overlays with different scales)
+- name: trace name for the legend
 
-MULTI-TRACE CHARTS (overlays, dual-axis):
-  For overlay plots (e.g. a line chart on top of a bar chart), use a "traces" array:
+SINGLE-TRACE EXAMPLE:
   "chartSpec": {
     "mode": "recipe",
     "traces": [
@@ -150,29 +156,33 @@ MULTI-TRACE CHARTS (overlays, dual-axis):
         "chartType": "bar",
         "xAxis": "$.county",
         "yAxis": "$.dol_vehicle_id",
-        "transform": { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "count", "target": "y"}] },
+        "aggregation": "count",
+        "name": "EV Count by County"
+      }
+    ]
+  }
+
+MULTI-TRACE EXAMPLE (overlay with dual axis):
+  "chartSpec": {
+    "mode": "recipe",
+    "traces": [
+      {
+        "chartType": "bar",
+        "xAxis": "$.county",
+        "yAxis": "$.dol_vehicle_id",
+        "aggregation": "count",
         "name": "EV Count"
       },
       {
         "chartType": "line",
         "xAxis": "$.county",
         "yAxis": "$.electric_range",
-        "transform": { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "mean", "target": "y"}] },
+        "aggregation": "mean",
         "yaxis2": "y2",
         "name": "Avg Range"
       }
     ]
   }
-  - Each trace has its own chartType, xAxis, yAxis (jsonPath strings).
-  - transform: optional Plotly aggregate transform. Use { "type": "aggregate", "groups": "<xAxis jsonPath>", "aggregations": [{"func": "sum|mean|count|min|max|median", "target": "y"}] }.
-  - yaxis2: set to "y2" to use a secondary y-axis (for overlays with different scales).
-  - name: trace name for the legend.
-
-AGGREGATION:
-  When you want to aggregate Y values by X (e.g. sum of revenue by category, count of vehicles by county, average range by make), ALWAYS include a transform on the trace. Common patterns:
-  - Count: { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "count", "target": "y"}] }
-  - Sum: { "type": "aggregate", "groups": "$.category", "aggregations": [{"func": "sum", "target": "y"}] }
-  - Mean: { "type": "aggregate", "groups": "$.make", "aggregations": [{"func": "mean", "target": "y"}] }
 
 Provide a dataProfile with rowCount and columns. Each column must have a "generator" field:
   - "category": include "categories" array
@@ -180,7 +190,7 @@ Provide a dataProfile with rowCount and columns. Each column must have a "genera
   - "uniform": include "min" and "max"
   - "linear": include "start", "end", and "step"
   - "constant": include "value"
-Column names in dataProfile must be jsonPath strings matching the chartSpec xAxis/yAxis/zAxis values.
+Column names in dataProfile must be jsonPath strings matching the chartSpec trace xAxis/yAxis/zAxis values.
 Return practical, visually interesting ideas with concise reasoning."""
 
 # --- Pydantic output models ---
@@ -202,34 +212,19 @@ class DatasetSchema(BaseModel):
     warnings: list[str] = []
 
 
-class PlotlyAggregation(BaseModel):
-    func: str = "count"
-    target: str = "y"
-
-
-class PlotlyTransform(BaseModel):
-    type: str = "aggregate"
-    groups: str = ""
-    aggregations: list[PlotlyAggregation] = []
-
-
 class TraceSpec(BaseModel):
     chartType: str = "bar"
     xAxis: str = ""
     yAxis: str = ""
     zAxis: str | None = None
-    transform: PlotlyTransform | None = None
+    aggregation: str | None = None
     yaxis2: str | None = None
     name: str | None = None
 
 
 class ChartSpec(BaseModel):
     mode: str = "recipe"
-    chartType: str | None = None
-    xAxis: str | None = None
-    yAxis: str | None = None
-    zAxis: str | None = None
-    traces: list[TraceSpec] | None = None
+    traces: list[TraceSpec] = []
     plotlyData: list[Any] | None = None
     plotlyLayout: dict[str, Any] | None = None
 
@@ -260,7 +255,7 @@ class InsightCandidate(BaseModel):
     confidence: float = 0.5
     hypothesis: str = ""
     metricDescription: str = ""
-    chartSpec: ChartSpec | None = None
+    chartSpec: ChartSpec = Field(default_factory=ChartSpec)
     dataProfile: DataProfile | None = None
     assumptions: list[str] = []
     description: str | None = None  # LLM sometimes returns this instead of summary
@@ -361,7 +356,7 @@ async def _run_pipeline(
         retry_prompt=(
             f"Generate 5 analytics insights for this schema. Each insight MUST have all fields: "
             f'id, title, summary, confidence (0-1), hypothesis, metricDescription, '
-            f'chartSpec (with mode="recipe", chartType, xAxis, yAxis as jsonPath strings), '
+            f'chartSpec (with mode="recipe" and a traces array, each trace needs chartType, xAxis, yAxis as jsonPath strings, and optional aggregation), '
             f'dataProfile (with rowCount and columns, each column needs name and generator), '
             f'and assumptions (array of strings).\n\nSchema: {json.dumps(schema)}'
         ),
@@ -430,6 +425,51 @@ async def generate_upload(
         tmp_path.unlink(missing_ok=True)
 
     return await _run_pipeline(schemaText, real_data)
+
+
+@app.post("/api/apply-data")
+async def apply_data(request: GenerateRequest) -> dict:
+    """Fetch and parse real data only (no LLM calls). Returns the parsed data for existing insights."""
+    if request.data_source_mode == "rest" and request.rest_url:
+        raw_text = await fetch_rest_data(
+            request.rest_method or "GET",
+            request.rest_url,
+            request.rest_headers or "",
+            request.rest_body or "",
+        )
+        from backend.parser import parse_data
+        return parse_data(raw_text, "json")
+
+    elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
+        raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
+        from backend.parser import parse_data
+        return parse_data(raw_json, "json")
+
+    raise HTTPException(status_code=400, detail="No valid data source provided")
+
+
+@app.post("/api/apply-data-upload")
+async def apply_data_upload(
+    file: UploadFile = File(...),
+    fileFormat: str = Form(default="csv"),
+) -> dict:
+    """Parse uploaded file only (no LLM calls). Returns the parsed data for existing insights."""
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Max {MAX_FILE_SIZE // (1024 * 1024)} MB. Got {len(content) // (1024 * 1024)} MB.",
+        )
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=f".{fileFormat}", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        from backend.parser import parse_data
+        return parse_data(tmp_path, fileFormat)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 @app.get("/api/health")

@@ -39,7 +39,7 @@ it('accepts a dataset schema with jsonPath on fields', () => {
   expect(parsed.fields[1].jsonPath).toBe('$.geocoded_column.longitude')
 })
 
-it('parses an insight with traces array and transforms', () => {
+it('parses an insight with traces array and aggregation', () => {
   const parsed = parseInsightEnvelope({
     insights: [
       {
@@ -56,22 +56,14 @@ it('parses an insight with traces array and transforms', () => {
               chartType: 'bar',
               xAxis: '$.county',
               yAxis: '$.dol_vehicle_id',
-              transform: {
-                type: 'aggregate',
-                groups: '$.county',
-                aggregations: [{ func: 'count', target: 'y' }]
-              },
+              aggregation: 'count',
               name: 'EV Count'
             },
             {
               chartType: 'line',
               xAxis: '$.county',
               yAxis: '$.electric_range',
-              transform: {
-                type: 'aggregate',
-                groups: '$.county',
-                aggregations: [{ func: 'mean', target: 'y' }]
-              },
+              aggregation: 'mean',
               yaxis2: 'y2',
               name: 'Avg Range'
             }
@@ -83,15 +75,14 @@ it('parses an insight with traces array and transforms', () => {
     ]
   })
 
-  const spec = parsed.insights[0].chartSpec!
+  const spec = parsed.insights[0].chartSpec
   expect(spec.traces).toHaveLength(2)
-  expect(spec.traces![0].chartType).toBe('bar')
-  expect(spec.traces![0].transform!.type).toBe('aggregate')
-  expect(spec.traces![0].transform!.aggregations[0].func).toBe('count')
-  expect(spec.traces![1].yaxis2).toBe('y2')
+  expect(spec.traces[0].chartType).toBe('bar')
+  expect(spec.traces[0].aggregation).toBe('count')
+  expect(spec.traces[1].yaxis2).toBe('y2')
 })
 
-it('parses an insight with shorthand axes (no traces)', () => {
+it('parses an insight with traces and no aggregation', () => {
   const parsed = parseInsightEnvelope({
     insights: [
       {
@@ -103,9 +94,9 @@ it('parses an insight with shorthand axes (no traces)', () => {
         metricDescription: 'Revenue by category',
         chartSpec: {
           mode: 'recipe',
-          chartType: 'bar',
-          xAxis: '$.category',
-          yAxis: '$.revenue'
+          traces: [
+            { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue' }
+          ]
         },
         dataProfile: null,
         assumptions: []
@@ -113,8 +104,31 @@ it('parses an insight with shorthand axes (no traces)', () => {
     ]
   })
 
-  const spec = parsed.insights[0].chartSpec!
-  expect(spec.traces).toBeUndefined()
-  expect(spec.chartType).toBe('bar')
-  expect(spec.xAxis).toBe('$.category')
+  const spec = parsed.insights[0].chartSpec
+  expect(spec.traces).toHaveLength(1)
+  expect(spec.traces[0].chartType).toBe('bar')
+  expect(spec.traces[0].aggregation).toBeUndefined()
+})
+
+it('defaults chartSpec traces to empty array when omitted', () => {
+  const parsed = parseInsightEnvelope({
+    insights: [
+      {
+        id: 'ins-3',
+        title: 'No traces',
+        summary: 'Empty chart spec',
+        confidence: 0.5,
+        hypothesis: 'Test',
+        metricDescription: 'Test',
+        chartSpec: {
+          mode: 'recipe'
+        },
+        dataProfile: null,
+        assumptions: []
+      }
+    ]
+  })
+
+  const spec = parsed.insights[0].chartSpec
+  expect(spec.traces).toEqual([])
 })

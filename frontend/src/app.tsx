@@ -4,7 +4,7 @@ import { ChartCarousel } from './components/ChartCarousel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
 import { downloadExportReport } from './lib/exportReport'
-import { callGenerate } from './services/apiClient'
+import { callGenerate, applyData } from './services/apiClient'
 import { generateMockDataset } from './services/mockData'
 import { buildDatasetFromRaw } from './services/dataIngest'
 import { useWorkspaceStore } from './store/workspaceStore'
@@ -15,6 +15,7 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [hasRealData, setHasRealData] = useState(false)
+  const [isApplyingData, setIsApplyingData] = useState(false)
   const regenerateCounters = useRef<Record<string, number>>({})
 
   const handleGenerate = async (request: GenerateRequest) => {
@@ -58,6 +59,34 @@ export function App() {
       )
     } finally {
       setIsGenerating(false)
+      setStatusMessage(null)
+    }
+  }
+
+  const handleApplyData = async (request: GenerateRequest) => {
+    setGenerationError(null)
+    setStatusMessage('Fetching real data...')
+    setIsApplyingData(true)
+
+    try {
+      const realData = await applyData(request)
+
+      if (realData && realData.rowCount > 0) {
+        workspace.insights.forEach((insight) => {
+          const dataset = buildDatasetFromRaw(insight.id, realData)
+          workspace.attachDataset(insight.id, dataset)
+        })
+        setHasRealData(true)
+        setStatusMessage(null)
+      } else {
+        setGenerationError('No data rows found in the response.')
+      }
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : 'Failed to apply real data.'
+      )
+    } finally {
+      setIsApplyingData(false)
       setStatusMessage(null)
     }
   }
@@ -129,7 +158,13 @@ export function App() {
             </Alert>
           ) : null}
 
-          <DataInputPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
+          <DataInputPanel
+            onGenerate={handleGenerate}
+            onApplyData={handleApplyData}
+            isGenerating={isGenerating}
+            isApplyingData={isApplyingData}
+            hasInsights={workspace.insights.length > 0}
+          />
 
           {hasRealData ? (
             <Text c="green" size="sm" fw={500}>

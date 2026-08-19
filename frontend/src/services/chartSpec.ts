@@ -1,4 +1,4 @@
-import type { ChartSpec, ChartType, GeneratedDataset, InsightCandidate, TraceSpec } from '../domain/types'
+import type { AggregationFunc, ChartSpec, GeneratedDataset, InsightCandidate, TraceSpec } from '../domain/types'
 import type * as Plotly from 'plotly.js'
 import { resolveValues } from './jsonPath'
 
@@ -36,6 +36,7 @@ const darkAxes = (xLabel?: string, yLabel?: string) => ({
 })
 
 const toDatum = (value: unknown): Plotly.Datum => {
+  if (value === null || value === undefined) return '' as Plotly.Datum
   if (typeof value === 'number' || typeof value === 'string') return value
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (value instanceof Date) return value.toISOString()
@@ -52,6 +53,66 @@ const toAxisLabel = (jsonPath: string): string => {
   return parts[parts.length - 1] ?? jsonPath
 }
 
+const aggregate = (
+  x: Plotly.Datum[],
+  y: Plotly.Datum[],
+  func: AggregationFunc
+): { x: Plotly.Datum[]; y: Plotly.Datum[] } => {
+  const groups = new Map<string, number[]>()
+
+  for (let i = 0; i < x.length; i++) {
+    const key = String(x[i])
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(toNumber(y[i]))
+  }
+
+  const sortedKeys = [...groups.keys()].sort()
+  const resultX: Plotly.Datum[] = []
+  const resultY: Plotly.Datum[] = []
+
+  for (const key of sortedKeys) {
+    const values = groups.get(key)!
+    let aggValue: number
+
+    switch (func) {
+      case 'sum':
+        aggValue = values.reduce((a, b) => a + b, 0)
+        break
+      case 'mean':
+        aggValue = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+        break
+      case 'count':
+        aggValue = values.length
+        break
+      case 'min':
+        aggValue = values.length > 0 ? Math.min(...values) : 0
+        break
+      case 'max':
+        aggValue = values.length > 0 ? Math.max(...values) : 0
+        break
+      case 'median':
+        const sorted = [...values].sort((a, b) => a - b)
+        aggValue = sorted.length % 2 === 0
+          ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+          : sorted[Math.floor(sorted.length / 2)]
+        break
+      case 'first':
+        aggValue = values[0] ?? 0
+        break
+      case 'last':
+        aggValue = values[values.length - 1] ?? 0
+        break
+      default:
+        aggValue = values.reduce((a, b) => a + b, 0)
+    }
+
+    resultX.push(key)
+    resultY.push(Math.round(aggValue * 100) / 100)
+  }
+
+  return { x: resultX, y: resultY }
+}
+
 interface ResolvedTrace {
   type?: Plotly.Data['type']
   x?: Plotly.Datum[]
@@ -65,7 +126,6 @@ interface ResolvedTrace {
   marker?: Record<string, unknown>
   line?: Record<string, unknown>
   textfont?: Record<string, unknown>
-  transforms?: unknown[]
   yaxis?: string
   name?: string
 }
@@ -76,9 +136,15 @@ const buildTraceData = (
   colorIndex: number
 ): ResolvedTrace => {
   const color = TRACE_COLORS[colorIndex % TRACE_COLORS.length]
-  const x = resolveValues(dataset, traceSpec.xAxis).map(toDatum)
-  const y = resolveValues(dataset, traceSpec.yAxis).map(toDatum)
+  let x = resolveValues(dataset, traceSpec.xAxis).map(toDatum)
+  let y = resolveValues(dataset, traceSpec.yAxis).map(toDatum)
   const z = traceSpec.zAxis ? resolveValues(dataset, traceSpec.zAxis).map(toNumber) : undefined
+
+  if (traceSpec.aggregation) {
+    const aggregated = aggregate(x, y, traceSpec.aggregation)
+    x = aggregated.x
+    y = aggregated.y
+  }
 
   const trace: ResolvedTrace = { name: traceSpec.name ?? undefined }
 
@@ -130,14 +196,6 @@ const buildTraceData = (
       break
   }
 
-  if (traceSpec.transform) {
-    trace.transforms = [{
-      type: 'aggregate',
-      groups: resolveValues(dataset, traceSpec.transform.groups).map(toDatum),
-      aggregations: traceSpec.transform.aggregations
-    }]
-  }
-
   if (traceSpec.yaxis2) {
     trace.yaxis = traceSpec.yaxis2
   }
@@ -150,7 +208,6 @@ const isPie = (chartType?: string) => chartType === 'pie'
 
 const buildLayout = (
   title: string,
-  _traces: ResolvedTrace[],
   traceSpecs: TraceSpec[],
   xLabel?: string,
   yLabel?: string
@@ -218,31 +275,13 @@ export const buildPlotlySpec = (
   const spec = insight.chartSpec
   const title = insight.title
 
-  if (!spec) {
-    return { data: [], layout: { ...darkLayout(title) } }
-  }
-
   if (spec.mode === 'custom') {
     return buildCustomChart(spec, title)
   }
 
-  if (spec.traces && spec.traces.length > 0) {
-    const traces = spec.traces.map((t, i) => buildTraceData(t, dataset, i))
-    const layout = buildLayout(title, traces, spec.traces)
-    return { data: traces as Plotly.Data[], layout }
-  }
-
-  const chartType = (spec.chartType ?? 'bar') as ChartType
-  const singleTrace: TraceSpec = {
-    chartType,
-    xAxis: spec.xAxis ?? '',
-    yAxis: spec.yAxis ?? '',
-    zAxis: spec.zAxis ?? null,
-    transform: null,
-    yaxis2: null,
-    name: null
-  }
-  const trace = buildTraceData(singleTrace, dataset, 0)
-  const layout = buildLayout(title, [trace], [singleTrace], spec.xAxis, spec.yAxis)
-  return { data: [trace as Plotly.Data], layout }
+  const traces = spec.traces.map((t, i) => buildTraceData(t, dataset, i))
+  const xLabel = spec.traces[0]?.xAxis
+  const yLabel = spec.traces[0]?.yAxis
+  const layout = buildLayout(title, spec.traces, xLabel, yLabel)
+  return { data: traces as Plotly.Data[], layout }
 }

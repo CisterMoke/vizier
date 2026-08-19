@@ -32,34 +32,21 @@ export interface DatasetSchema {
 
 export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap' | 'geomap'
 
-export interface PlotlyAggregation {
-  func: 'sum' | 'mean' | 'count' | 'min' | 'max' | 'median' | 'first' | 'last'
-  target: string
-}
-
-export interface PlotlyTransform {
-  type: 'aggregate'
-  groups: string
-  aggregations: PlotlyAggregation[]
-}
+export type AggregationFunc = 'sum' | 'mean' | 'count' | 'min' | 'max' | 'median' | 'first' | 'last'
 
 export interface TraceSpec {
   chartType: ChartType
   xAxis: string
   yAxis: string
   zAxis?: string | null
-  transform?: PlotlyTransform | null
+  aggregation?: AggregationFunc | null
   yaxis2?: string | null
   name?: string | null
 }
 
 export interface ChartSpec {
   mode: 'recipe' | 'custom'
-  chartType?: ChartType
-  xAxis?: string
-  yAxis?: string
-  zAxis?: string | null
-  traces?: TraceSpec[] | null
+  traces: TraceSpec[]
   plotlyData?: unknown[] | null
   plotlyLayout?: Record<string, unknown> | null
 }
@@ -92,7 +79,7 @@ export interface InsightCandidate {
   confidence: number
   hypothesis: string
   metricDescription: string
-  chartSpec: ChartSpec | null
+  chartSpec: ChartSpec
   dataProfile: DataProfile | null
   assumptions: string[]
   description?: string | null

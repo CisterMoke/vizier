@@ -19,9 +19,9 @@ const insights: InsightCandidate[] = [
     metricDescription: 'Sum of revenue by category.',
     chartSpec: {
       mode: 'recipe',
-      chartType: 'bar',
-      xAxis: 'category',
-      yAxis: 'revenue'
+      traces: [
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue' }
+      ]
     },
     dataProfile: {
       rowCount: 4,
@@ -41,9 +41,9 @@ const insights: InsightCandidate[] = [
     metricDescription: 'Weekly order count.',
     chartSpec: {
       mode: 'recipe',
-      chartType: 'line',
-      xAxis: 'week',
-      yAxis: 'count'
+      traces: [
+        { chartType: 'line', xAxis: '$.week', yAxis: '$.count' }
+      ]
     },
     dataProfile: {
       rowCount: 12,

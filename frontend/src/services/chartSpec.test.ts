@@ -22,9 +22,9 @@ const mockBarInsight: InsightCandidate = {
   metricDescription: 'Sum of revenue grouped by category.',
   chartSpec: {
     mode: 'recipe',
-    chartType: 'bar',
-    xAxis: '$.category',
-    yAxis: '$.revenue'
+    traces: [
+      { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue' }
+    ]
   },
   dataProfile: {
     rowCount: 4,
@@ -51,7 +51,10 @@ it('resolves JSONPath axes from dataset rows', () => {
 it('maps line chart recipe to a scatter trace with lines+markers', () => {
   const lineInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: { mode: 'recipe', chartType: 'line', xAxis: '$.week', yAxis: '$.count' }
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'line', xAxis: '$.category', yAxis: '$.revenue' }]
+    }
   }
   const spec = buildPlotlySpec(lineInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('scatter')
@@ -61,7 +64,10 @@ it('maps line chart recipe to a scatter trace with lines+markers', () => {
 it('maps pie chart recipe to a pie trace', () => {
   const pieInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: { mode: 'recipe', chartType: 'pie', xAxis: '$.segment', yAxis: '$.share' }
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'pie', xAxis: '$.category', yAxis: '$.revenue' }]
+    }
   }
   const spec = buildPlotlySpec(pieInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('pie')
@@ -70,7 +76,10 @@ it('maps pie chart recipe to a pie trace', () => {
 it('maps scatter chart recipe to a scatter trace with markers only', () => {
   const scatterInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: { mode: 'recipe', chartType: 'scatter', xAxis: '$.orders', yAxis: '$.revenue' }
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'scatter', xAxis: '$.category', yAxis: '$.revenue' }]
+    }
   }
   const spec = buildPlotlySpec(scatterInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('scatter')
@@ -80,7 +89,10 @@ it('maps scatter chart recipe to a scatter trace with markers only', () => {
 it('maps heatmap chart recipe to a heatmap trace', () => {
   const heatmapInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: { mode: 'recipe', chartType: 'heatmap', xAxis: '$.longitude', yAxis: '$.latitude', zAxis: '$.intensity' }
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'heatmap', xAxis: '$.longitude', yAxis: '$.latitude', zAxis: '$.intensity' }]
+    }
   }
   const heatmapDataset: GeneratedDataset = {
     ...mockDataset,
@@ -97,7 +109,10 @@ it('maps heatmap chart recipe to a heatmap trace', () => {
 it('maps geomap chart recipe to a scattergeo trace on a world map', () => {
   const geomapInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: { mode: 'recipe', chartType: 'geomap', xAxis: '$.lng', yAxis: '$.lat', zAxis: '$.score' }
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'geomap', xAxis: '$.lng', yAxis: '$.lat', zAxis: '$.score' }]
+    }
   }
   const geoDataset: GeneratedDataset = {
     ...mockDataset,
@@ -117,6 +132,7 @@ it('passes through custom plotly spec directly', () => {
     ...mockBarInsight,
     chartSpec: {
       mode: 'custom',
+      traces: [],
       plotlyData: [{ type: 'heatmap', z: [[1, 2], [3, 4]] }],
       plotlyLayout: { title: { text: 'Custom Heatmap' } }
     }
@@ -124,19 +140,6 @@ it('passes through custom plotly spec directly', () => {
   const spec = buildPlotlySpec(customInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('heatmap')
   expect((spec.layout as { title: { text: string } }).title.text).toBe('Custom Heatmap')
-})
-
-it('works when mode is omitted (defaults to recipe)', () => {
-  const noModeInsight: InsightCandidate = {
-    ...mockBarInsight,
-    chartSpec: {
-      chartType: 'bar',
-      xAxis: '$.category',
-      yAxis: '$.revenue'
-    } as InsightCandidate['chartSpec']
-  }
-  const spec = buildPlotlySpec(noModeInsight, mockDataset)
-  expect(spec.data[0]?.type).toBe('bar')
 })
 
 it('returns the required plotly contract shape', () => {
@@ -153,19 +156,8 @@ it('builds multiple traces from traces array', () => {
     chartSpec: {
       mode: 'recipe',
       traces: [
-        {
-          chartType: 'bar',
-          xAxis: '$.category',
-          yAxis: '$.revenue',
-          name: 'Revenue'
-        },
-        {
-          chartType: 'line',
-          xAxis: '$.category',
-          yAxis: '$.revenue',
-          yaxis2: 'y2',
-          name: 'Trend'
-        }
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue', name: 'Revenue' },
+        { chartType: 'line', xAxis: '$.category', yAxis: '$.revenue', yaxis2: 'y2', name: 'Trend' }
       ]
     }
   }
@@ -176,32 +168,52 @@ it('builds multiple traces from traces array', () => {
   expect((spec.data[1] as Plotly.Data).yaxis).toBe('y2')
 })
 
-it('embeds aggregate transform in trace data', () => {
+it('aggregates Y values by X when aggregation is set to sum', () => {
   const aggInsight: InsightCandidate = {
     ...mockBarInsight,
     chartSpec: {
       mode: 'recipe',
-      chartType: 'bar',
-      xAxis: '$.category',
-      yAxis: '$.revenue',
       traces: [
-        {
-          chartType: 'bar',
-          xAxis: '$.category',
-          yAxis: '$.revenue',
-          transform: {
-            type: 'aggregate',
-            groups: '$.category',
-            aggregations: [{ func: 'sum', target: 'y' }]
-          }
-        }
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue', aggregation: 'sum' }
       ]
     }
   }
   const spec = buildPlotlySpec(aggInsight, mockDataset)
-  const trace = spec.data[0] as Plotly.Data & { transforms?: unknown[] }
-  expect(trace.transforms).toBeDefined()
-  expect((trace.transforms as [{ type: string }])[0].type).toBe('aggregate')
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([200, 95])
+})
+
+it('aggregates Y values by X when aggregation is set to count', () => {
+  const aggInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue', aggregation: 'count' }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(aggInsight, mockDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([2, 1])
+})
+
+it('aggregates Y values by X when aggregation is set to mean', () => {
+  const aggInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue', aggregation: 'mean' }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(aggInsight, mockDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([100, 95])
 })
 
 it('sets barmode group when multiple bar traces exist', () => {
