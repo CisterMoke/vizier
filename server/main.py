@@ -1,17 +1,20 @@
 """FastAPI LLM proxy server for Analytics Idea Lab.
 
-All LLM calls happen server-side so API keys never reach the browser.
+All LLM calls happen server-side via pydantic-ai so API keys never reach the browser.
 Supports Google (Gemini) and Mistral providers.
+REST API calls use aiohttp, data parsing uses pandas.
 """
 
 import json
 import os
 from typing import Any
 
-import httpx
+import aiohttp
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
 app = FastAPI(title="Analytics Idea Lab LLM Proxy")
 
@@ -61,7 +64,23 @@ Return practical, visually interesting ideas with concise reasoning."""
 
 FIELD_MAPPING_PROMPT = """You are a field mapping assistant. Given a list of insights with their chart axis column names (from mock data profiles) and a list of real data column names, map each insight's axis columns to the best matching real column. Return a mappings array where each entry has insightId and a mappings object mapping axis names to real column names."""
 
-# --- Models ---
+# --- Pydantic output models ---
+
+class DatasetSchema(BaseModel):
+    source: str
+    fields: list[dict[str, Any]]
+    warnings: list[str]
+
+
+class InsightEnvelope(BaseModel):
+    insights: list[dict[str, Any]]
+
+
+class FieldMappingResult(BaseModel):
+    mappings: list[dict[str, Any]]
+
+
+# --- Request model ---
 
 class GenerateRequest(BaseModel):
     schema_text: str = Field(alias="schemaText")
@@ -80,92 +99,52 @@ class GenerateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-# --- LLM helpers ---
-
-async def call_google(api_key: str, model: str, system: str, prompt: str) -> dict:
-    """Call Google Gemini API."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            url,
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json={
-                "contents": [
-                    {"role": "user", "parts": [{"text": f"{system}\n\n{prompt}"}]}
-                ],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                },
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return json.loads(text)
-
-
-async def call_mistral(api_key: str, model: str, system: str, prompt: str) -> dict:
-    """Call Mistral API."""
-    url = "https://api.mistral.ai/v1/chat/completions"
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "response_format": {"type": "json_object"},
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"]
-        return json.loads(text)
-
-
-async def call_llm(provider: str, model: str, system: str, prompt: str) -> dict:
-    api_key = os.environ.get("LLM_API_KEY", "")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="LLM_API_KEY environment variable not set")
-
+def _model_string(provider: str, model: str) -> str:
+    """Build pydantic-ai model string."""
     if provider == "google":
-        return await call_google(api_key, model, system, prompt)
+        return f"google-gla:{model}"
     elif provider == "mistral":
-        return await call_mistral(api_key, model, system, prompt)
-    else:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+        return f"mistral:{model}"
+    raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+
+
+async def call_llm(provider: str, model: str, system: str, prompt: str, output_type: type) -> dict:
+    """Call LLM via pydantic-ai with structured output."""
+    model_str = _model_string(provider, model)
+    agent = Agent(model_str, system_prompt=system, output_type=output_type)
+
+    result = await agent.run(prompt)
+    return result.output.model_dump()
 
 
 # --- Data fetching ---
 
 async def fetch_rest_data(method: str, url: str, headers: str, body: str) -> str:
-    """Fetch data from a REST API."""
-    parsed_headers = json.loads(headers) if headers else {}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.request(
+    """Fetch data from a REST API using aiohttp."""
+    parsed_headers: dict[str, str] = {}
+    if headers:
+        parsed_headers = json.loads(headers)
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        async with session.request(
             method,
             url,
             headers=parsed_headers,
-            content=body if body else None,
-        )
-        resp.raise_for_status()
-        return resp.text
+            data=body.encode() if body else None,
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.text()
 
 
 async def fetch_sql_data(connection_string: str, query: str) -> str:
-    """Execute a SQL query and return results as JSON."""
-    import sqlalchemy
+    """Execute a SQL query and return results as JSON using pandas."""
+    from sqlalchemy import create_engine, text
 
-    engine = sqlalchemy.create_engine(connection_string)
+    engine = create_engine(connection_string)
     with engine.connect() as conn:
-        result = conn.execute(sqlalchemy.text(query))
-        columns = list(result.keys())
-        rows = [dict(zip(columns, row)) for row in result.fetchall()]
+        df = pd.read_sql(text(query), conn)
 
-    return json.dumps(rows)
+    return df.to_json(orient="records", force_ascii=False)
 
 
 # --- Routes ---
@@ -178,6 +157,7 @@ async def generate(request: GenerateRequest) -> dict:
         request.provider, request.model,
         MAP_SCHEMA_PROMPT,
         f"Analyze this data description and extract the dataset schema:\n\n{request.schema_text}",
+        DatasetSchema,
     )
 
     # 2. Generate insights
@@ -185,21 +165,16 @@ async def generate(request: GenerateRequest) -> dict:
         request.provider, request.model,
         INSIGHT_PROMPT,
         f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}",
+        InsightEnvelope,
     )
 
     # 3. Fetch real data if requested
     real_data: dict | None = None
-    field_mappings: list[dict] = []
+    field_mappings: list = []
 
     if request.data_source_mode == "file" and request.file_content:
-        real_data = {"columns": [], "rows": [], "rowCount": 0}
-        # Parsing happens client-side; server just passes through for field mapping
-        # Actually, we parse server-side too for REST/SQL
-        # For file uploads, the client already parsed the content — we get raw text
-        # Let's parse it here
         from server.parser import parse_data
-        parsed = parse_data(request.file_content, request.file_format or "csv")
-        real_data = parsed
+        real_data = parse_data(request.file_content, request.file_format or "csv")
 
     elif request.data_source_mode == "rest" and request.rest_url:
         raw_text = await fetch_rest_data(
@@ -209,14 +184,12 @@ async def generate(request: GenerateRequest) -> dict:
             request.rest_body or "",
         )
         from server.parser import parse_data
-        parsed = parse_data(raw_text, "json")
-        real_data = parsed
+        real_data = parse_data(raw_text, "json")
 
     elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
         raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
         from server.parser import parse_data
-        parsed = parse_data(raw_json, "json")
-        real_data = parsed
+        real_data = parse_data(raw_json, "json")
 
     # 4. Map fields if we have real data
     if real_data and real_data.get("rowCount", 0) > 0:
@@ -238,6 +211,7 @@ async def generate(request: GenerateRequest) -> dict:
             f"Available real data columns:\n{json.dumps(real_data['columns'])}\n\n"
             f"For each insight, map xAxis, yAxis, and zAxis to the most appropriate real column name. "
             f'Return {{ "mappings": [{{ "insightId": "...", "mappings": {{ "xAxis": "col", "yAxis": "col" }} }}] }}.',
+            FieldMappingResult,
         )
         field_mappings = mapping_result.get("mappings", [])
 
