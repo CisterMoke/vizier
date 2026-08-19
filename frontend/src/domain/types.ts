@@ -34,12 +34,21 @@ export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap' | 'geomap
 
 export type AggregationFunc = 'sum' | 'mean' | 'count' | 'min' | 'max' | 'median' | 'first' | 'last'
 
+export type FilterOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'not_in'
+
+export interface TraceFilter {
+  field: string
+  op: FilterOperator
+  value: string | number | (string | number)[]
+}
+
 export interface TraceSpec {
   chartType: ChartType
   xAxis: string
   yAxis: string
   zAxis?: string | null
   aggregation?: AggregationFunc | null
+  filter?: TraceFilter | null
   yaxis2?: string | null
   name?: string | null
 }

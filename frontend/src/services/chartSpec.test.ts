@@ -248,3 +248,137 @@ it('adds yaxis2 layout when a trace uses yaxis2', () => {
   expect(layout.yaxis2!.side).toBe('right')
   expect(layout.yaxis2!.overlaying).toBe('y')
 })
+
+it('parses numeric strings as numbers for aggregation', () => {
+  const stringDataset: GeneratedDataset = {
+    ...mockDataset,
+    rows: [
+      { category: 'A', revenue: '120' },
+      { category: 'A', revenue: '80' },
+      { category: 'B', revenue: '95' }
+    ]
+  }
+  const aggInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        { chartType: 'bar', xAxis: '$.category', yAxis: '$.revenue', aggregation: 'mean' }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(aggInsight, stringDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([100, 95])
+})
+
+it('filters rows by eq operator', () => {
+  const filterDataset: GeneratedDataset = {
+    ...mockDataset,
+    rows: [
+      { category: 'A', revenue: 120 },
+      { category: 'A', revenue: 80 },
+      { category: 'B', revenue: 95 },
+      { category: 'B', revenue: 50 }
+    ]
+  }
+  const filterInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        {
+          chartType: 'bar',
+          xAxis: '$.category',
+          yAxis: '$.revenue',
+          aggregation: 'sum',
+          filter: { field: '$.category', op: 'eq', value: 'A' }
+        }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(filterInsight, filterDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A'])
+  expect(trace.y).toEqual([200])
+})
+
+it('filters rows by gte operator', () => {
+  const filterDataset: GeneratedDataset = {
+    ...mockDataset,
+    rows: [
+      { category: 'A', revenue: 120 },
+      { category: 'A', revenue: 80 },
+      { category: 'B', revenue: 95 },
+      { category: 'B', revenue: 50 }
+    ]
+  }
+  const filterInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        {
+          chartType: 'bar',
+          xAxis: '$.category',
+          yAxis: '$.revenue',
+          aggregation: 'sum',
+          filter: { field: '$.revenue', op: 'gte', value: 95 }
+        }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(filterInsight, filterDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([120, 95])
+})
+
+it('filters rows by in operator', () => {
+  const filterDataset: GeneratedDataset = {
+    ...mockDataset,
+    rows: [
+      { category: 'A', revenue: 120 },
+      { category: 'B', revenue: 80 },
+      { category: 'C', revenue: 95 }
+    ]
+  }
+  const filterInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [
+        {
+          chartType: 'bar',
+          xAxis: '$.category',
+          yAxis: '$.revenue',
+          aggregation: 'sum',
+          filter: { field: '$.category', op: 'in', value: ['A', 'B'] }
+        }
+      ]
+    }
+  }
+  const spec = buildPlotlySpec(filterInsight, filterDataset)
+  const trace = spec.data[0] as Plotly.Data
+  expect(trace.x).toEqual(['A', 'B'])
+  expect(trace.y).toEqual([120, 80])
+})
+
+it('sets transparent geo background for geomap', () => {
+  const geomapInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      traces: [{ chartType: 'geomap', xAxis: '$.lng', yAxis: '$.lat' }]
+    }
+  }
+  const geoDataset: GeneratedDataset = {
+    ...mockDataset,
+    columns: ['lng', 'lat'],
+    rows: [{ lng: -74.0, lat: 40.7 }]
+  }
+  const spec = buildPlotlySpec(geomapInsight, geoDataset)
+  const layout = spec.layout as { geo: { bgcolor?: string } }
+  expect(layout.geo.bgcolor).toBe('rgba(0, 0, 0, 0)')
+})

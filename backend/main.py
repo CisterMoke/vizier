@@ -147,6 +147,13 @@ Each trace in the traces array has:
   - Mean: "aggregation": "mean" (averages Y values per X category)
 - yaxis2: set to "y2" to use a secondary y-axis (for overlays with different scales)
 - name: trace name for the legend
+- filter: optional, to select a subset of data for this trace only
+  - field: a jsonPath string for the field to filter on (e.g. "$.state")
+  - op: one of "eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in"
+  - value: a string, number, or array of strings/numbers to compare against
+  - Example: { "field": "$.ev_type", "op": "eq", "value": "Battery Electric Vehicle (BEV)" }
+  - Example: { "field": "$.electric_range", "op": "gte", "value": 200 }
+  - Example: { "field": "$.make", "op": "in", "value": ["TESLA", "NISSAN", "FORD"] }
 
 SINGLE-TRACE EXAMPLE:
   "chartSpec": {
@@ -212,12 +219,19 @@ class DatasetSchema(BaseModel):
     warnings: list[str] = []
 
 
+class TraceFilter(BaseModel):
+    field: str = ""
+    op: str = "eq"
+    value: Any = None
+
+
 class TraceSpec(BaseModel):
     chartType: str = "bar"
     xAxis: str = ""
     yAxis: str = ""
     zAxis: str | None = None
     aggregation: str | None = None
+    filter: TraceFilter | None = None
     yaxis2: str | None = None
     name: str | None = None
 

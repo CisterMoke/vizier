@@ -33,12 +33,19 @@ export const datasetSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
+const traceFilterSchema = z.object({
+  field: z.string(),
+  op: z.enum(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in']),
+  value: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))])
+})
+
 const traceSpecSchema = z.object({
   chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']),
   xAxis: z.string(),
   yAxis: z.string(),
   zAxis: z.string().nullable().optional(),
   aggregation: z.enum(['sum', 'mean', 'count', 'min', 'max', 'median', 'first', 'last']).nullable().optional(),
+  filter: traceFilterSchema.nullable().optional(),
   yaxis2: z.string().nullable().optional(),
   name: z.string().nullable().optional()
 })

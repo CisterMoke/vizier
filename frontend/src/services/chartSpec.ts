@@ -1,4 +1,4 @@
-import type { AggregationFunc, ChartSpec, GeneratedDataset, InsightCandidate, TraceSpec } from '../domain/types'
+import type { AggregationFunc, ChartSpec, GeneratedDataset, InsightCandidate, TraceFilter, TraceSpec } from '../domain/types'
 import type * as Plotly from 'plotly.js'
 import { resolveValues } from './jsonPath'
 
@@ -45,6 +45,10 @@ const toDatum = (value: unknown): Plotly.Datum => {
 
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return !isNaN(n) ? n : 0
+  }
   return 0
 }
 
@@ -130,15 +134,56 @@ interface ResolvedTrace {
   name?: string
 }
 
+const matchesFilter = (value: unknown, filter: TraceFilter): boolean => {
+  const filterValue = filter.value
+  switch (filter.op) {
+    case 'eq':
+      return String(value) === String(filterValue)
+    case 'ne':
+      return String(value) !== String(filterValue)
+    case 'gt':
+      return toNumber(value) > toNumber(filterValue)
+    case 'gte':
+      return toNumber(value) >= toNumber(filterValue)
+    case 'lt':
+      return toNumber(value) < toNumber(filterValue)
+    case 'lte':
+      return toNumber(value) <= toNumber(filterValue)
+    case 'in':
+      return Array.isArray(filterValue) && filterValue.some(v => String(value) === String(v))
+    case 'not_in':
+      return Array.isArray(filterValue) && !filterValue.some(v => String(value) === String(v))
+    default:
+      return true
+  }
+}
+
+const filterDataset = (dataset: GeneratedDataset, filter: TraceFilter): GeneratedDataset => {
+  const fieldValues = resolveValues(dataset, filter.field)
+  const keepIndices = new Set<number>()
+
+  for (let i = 0; i < fieldValues.length; i++) {
+    if (matchesFilter(fieldValues[i], filter)) {
+      keepIndices.add(i)
+    }
+  }
+
+  return {
+    ...dataset,
+    rows: dataset.rows.filter((_, i) => keepIndices.has(i))
+  }
+}
+
 const buildTraceData = (
   traceSpec: TraceSpec,
   dataset: GeneratedDataset,
   colorIndex: number
 ): ResolvedTrace => {
   const color = TRACE_COLORS[colorIndex % TRACE_COLORS.length]
-  let x = resolveValues(dataset, traceSpec.xAxis).map(toDatum)
-  let y = resolveValues(dataset, traceSpec.yAxis).map(toDatum)
-  const z = traceSpec.zAxis ? resolveValues(dataset, traceSpec.zAxis).map(toNumber) : undefined
+  const filtered = traceSpec.filter ? filterDataset(dataset, traceSpec.filter) : dataset
+  let x = resolveValues(filtered, traceSpec.xAxis).map(toDatum)
+  let y = resolveValues(filtered, traceSpec.yAxis).map(toDatum)
+  const z = traceSpec.zAxis ? resolveValues(filtered, traceSpec.zAxis).map(toNumber) : undefined
 
   if (traceSpec.aggregation) {
     const aggregated = aggregate(x, y, traceSpec.aggregation)
@@ -181,13 +226,13 @@ const buildTraceData = (
       trace.type = 'heatmap'
       trace.x = x
       trace.y = y
-      trace.z = z ?? dataset.rows.map((_, i) => i + 1)
+      trace.z = z ?? filtered.rows.map((_, i) => i + 1)
       break
     case 'geomap':
       trace.type = 'scattergeo'
       trace.mode = 'markers'
-      trace.lon = resolveValues(dataset, traceSpec.xAxis).map(toNumber)
-      trace.lat = resolveValues(dataset, traceSpec.yAxis).map(toNumber)
+      trace.lon = resolveValues(filtered, traceSpec.xAxis).map(toNumber)
+      trace.lat = resolveValues(filtered, traceSpec.yAxis).map(toNumber)
       if (z) {
         trace.marker = { size: 8, color: z, colorscale: 'Viridis', showscale: true, colorbar: { title: { text: traceSpec.zAxis ? toAxisLabel(traceSpec.zAxis) : '', font: { color: FONT_COLOR } }, tickfont: { color: FONT_COLOR } } }
       } else {
@@ -223,6 +268,7 @@ const buildLayout = (
 
   if (hasGeomap) {
     layout.geo = {
+      bgcolor: 'rgba(0, 0, 0, 0)',
       showland: true,
       landcolor: 'rgb(17, 24, 39)',
       showocean: true,
