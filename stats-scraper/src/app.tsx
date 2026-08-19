@@ -1,10 +1,8 @@
 import { useRef, useState } from 'preact/hooks'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
-import { ChartGrid } from './components/ChartGrid'
+import { ChartCarousel } from './components/ChartCarousel'
 import { InsightControls } from './components/InsightControls'
 import { SchemaInputPanel } from './components/SchemaInputPanel'
-import { SchemaPreviewEditor } from './components/SchemaPreviewEditor'
-import { FALLBACK_INSIGHTS, SAMPLE_SCHEMAS } from './data/sampleSchemas'
 import { downloadExportReport } from './lib/exportReport'
 import { generateInsightCandidates } from './services/insightGeneration'
 import { createLLMProvider } from './services/llmProvider'
@@ -12,7 +10,7 @@ import type { ProviderId } from './services/llmProvider'
 import { generateMockDataset } from './services/mockData'
 import { useWorkspaceStore } from './store/workspaceStore'
 
-const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to run AI schema mapping.'
+const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to generate analytics.'
 
 const envApiKey = (import.meta.env.VITE_LLM_API_KEY as string) || ''
 const envProvider = ((import.meta.env.VITE_LLM_PROVIDER as string) || 'google') as ProviderId
@@ -23,81 +21,53 @@ export function App() {
   const [apiKey, setApiKey] = useState(envApiKey)
   const [provider, setProvider] = useState<ProviderId>(envProvider)
   const [model, setModel] = useState(envModel)
-  const [isMapping, setIsMapping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const regenerateCounters = useRef<Record<string, number>>({})
 
-  const buildFallbackDatasets = (fallbackInsights = FALLBACK_INSIGHTS) => {
-    fallbackInsights.forEach((insight, index) => {
-      workspace.attachDataset(
-        insight.id,
-        generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + index })
-      )
-    })
-  }
-
-  const handleMapSchema = async (rawText: string) => {
+  const handleGenerate = async (rawText: string) => {
     workspace.setRawSchema(rawText)
     workspace.setInsights([])
+    workspace.setDatasetSchema({ source: '', fields: [], warnings: [] })
     setGenerationError(null)
+    setStatusMessage(null)
 
     if (apiKey.trim().length === 0) {
       setGenerationError(API_KEY_REQUIRED_MESSAGE)
       return
     }
 
-    setIsMapping(true)
+    setIsGenerating(true)
 
     try {
       const llm = createLLMProvider({ apiKey, provider, model })
+
+      setStatusMessage('Mapping data schema...')
       const schema = await llm.mapSchema(rawText)
       workspace.setDatasetSchema(schema)
-    } catch (error) {
-      setGenerationError(
-        error instanceof Error ? `Schema mapping failed: ${error.message}` : 'Schema mapping failed.'
-      )
-    } finally {
-      setIsMapping(false)
-    }
-  }
 
-  const handleGenerateInsights = async () => {
-    if (workspace.datasetSchema.fields.length === 0) {
-      return
-    }
-
-    setIsGenerating(true)
-    setGenerationError(null)
-
-    try {
-      if (apiKey.trim().length === 0) {
-        workspace.setInsights(FALLBACK_INSIGHTS)
-        buildFallbackDatasets()
-        setGenerationError('No API key provided. Loaded offline fallback insights.')
-        return
-      }
-
-      const llm = createLLMProvider({ apiKey, provider, model })
-      const nextInsights = await generateInsightCandidates(workspace.datasetSchema, llm)
+      setStatusMessage('Generating analytics insights...')
+      const nextInsights = await generateInsightCandidates(schema, llm)
 
       workspace.setInsights(nextInsights)
       nextInsights.forEach((insight, index) => {
         workspace.attachDataset(
           insight.id,
-          generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + index })
+          generateMockDataset(schema, insight, { seed: workspace.demoSeed + index })
         )
       })
+
+      setStatusMessage(null)
     } catch (error) {
-      workspace.setInsights(FALLBACK_INSIGHTS)
-      buildFallbackDatasets()
       setGenerationError(
         error instanceof Error
-          ? `${error.message}. Loaded offline fallback insights.`
-          : 'Failed to generate insights. Loaded offline fallback insights.'
+          ? `${error.message}`
+          : 'Failed to generate analytics.'
       )
     } finally {
       setIsGenerating(false)
+      setStatusMessage(null)
     }
   }
 
@@ -156,16 +126,6 @@ export function App() {
             </Group>
           </Paper>
 
-          {generationError ? (
-            <Alert role="alert" color="orange">
-              {generationError}
-            </Alert>
-          ) : null}
-
-          <SchemaInputPanel onMapSchema={handleMapSchema} isMapping={isMapping} sampleSchemas={SAMPLE_SCHEMAS} />
-
-          <SchemaPreviewEditor schema={workspace.datasetSchema} onChange={workspace.setDatasetSchema} />
-
           <InsightControls
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
@@ -173,12 +133,23 @@ export function App() {
             onProviderChange={setProvider}
             model={model}
             onModelChange={setModel}
-            onGenerate={handleGenerateInsights}
-            isGenerating={isGenerating}
-            disabled={workspace.datasetSchema.fields.length === 0}
           />
 
-          <ChartGrid
+          {generationError ? (
+            <Alert role="alert" color="orange">
+              {generationError}
+            </Alert>
+          ) : null}
+
+          {statusMessage ? (
+            <Alert color="blue">
+              {statusMessage}
+            </Alert>
+          ) : null}
+
+          <SchemaInputPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
+
+          <ChartCarousel
             insights={workspace.insights}
             datasetsByInsightId={workspace.datasetsByInsightId}
             onRegenerate={handleRegenerateCard}

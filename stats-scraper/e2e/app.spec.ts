@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('end-to-end flow from schema paste to report export', async ({ page }) => {
+test('end-to-end flow from data paste to report export', async ({ page }) => {
   let requestCount = 0
 
   const mockGoogleResponse = (payload: unknown) => ({
@@ -71,10 +71,10 @@ test('end-to-end flow from schema paste to report export', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel(/schema text/i).fill('orders(id int, total decimal)')
   await page.getByLabel(/api key/i).fill('demo-key')
-  await page.getByRole('button', { name: /map schema with ai/i }).click()
-  await page.getByRole('button', { name: /generate/i }).click()
+  await page.getByLabel(/data description/i).fill('orders(id int, total decimal)')
+  await page.getByRole('button', { name: /generate analytics/i }).click()
+
   await expect(page.getByTestId('chart-card')).toHaveCount(1)
 
   const downloadPromise = page.waitForEvent('download')

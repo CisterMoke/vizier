@@ -26,7 +26,7 @@ const MAP_SCHEMA_PROMPT = `You are a data schema analyzer. Given free-form text 
 
 For each field, infer:
 - type: string, number, boolean, date, or datetime
-- semanticType: identifier (primary key), measure (numeric metric), dimension (categorical label), timestamp, currency, percentage, count, or text
+- semanticType: identifier (primary key), measure (numeric metric), dimension (categorical label), timestamp, currency, percentage, count, text, latitude (lat/geo lat), longitude (lng/geo lon), or geohash
 - sampleValues: 3-5 representative values if they can be inferred from the input
 - unique: true if the field is a primary key or unique identifier
 - group: a grouping label if the fields come from distinct nested objects or resources (e.g. "order", "customer")
@@ -37,14 +37,20 @@ Include warnings for any fields you are uncertain about.`
 const INSIGHT_PROMPT = `You are an analytics brainstorming assistant. Given a dataset schema with field semantics and sample values, generate creative analytics hypotheses suitable for a hackathon demo.
 
 For each insight, provide:
-- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, or scatter), xAxis (column name string), and yAxis (column name string).
+- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, scatter, or heatmap), xAxis (column name string), yAxis (column name string), and optionally zAxis (column name string for heatmap intensity).
+  - Use "heatmap" when the data has geographic coordinates (latitude/longitude) or when a 2D density/intensity view is useful. Provide xAxis as longitude, yAxis as latitude, and zAxis as the intensity measure.
+  - Use "scatter" for correlation between two measures.
+  - Use "bar" for categorical comparisons.
+  - Use "line" for trends over time.
+  - Use "pie" for share/proportion.
 - A dataProfile specifying rowCount and column definitions. Each column must use one of these generators:
   - "category": provide categories array (e.g. ["Electronics", "Clothing", "Home"])
   - "normal": provide mean and stddev, optional min/max
   - "uniform": provide min and max
-  - "linear": provide start, end, and step
+  - "linear": provide start, end, and step (use for time-like axes or sequential IDs)
   - "constant": provide value
-Column names in dataProfile must match the chartSpec xAxis and yAxis values.
+  For geographic coordinates, use "uniform" with min/max for latitude (-90 to 90) and longitude (-180 to 180).
+Column names in dataProfile must match the chartSpec xAxis, yAxis, and zAxis values.
 Do not include extra fields in column specs beyond what each generator needs.
 Use the field semanticType and sampleValues from the schema to make realistic choices.
 Return practical, visually interesting ideas with concise reasoning.`

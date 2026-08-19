@@ -16,6 +16,11 @@ const toDatum = (value: unknown): Plotly.Datum => {
   return String(value)
 }
 
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') return value
+  return 0
+}
+
 const buildBarChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
   const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
   const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
@@ -68,6 +73,23 @@ const buildScatterChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title
   }
 }
 
+const buildHeatmapChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const x = dataset.rows.map((row) => toNumber(row[recipe.xAxis]))
+  const y = dataset.rows.map((row) => toNumber(row[recipe.yAxis]))
+  const z = recipe.zAxis
+    ? dataset.rows.map((row) => toNumber(row[recipe.zAxis!]))
+    : dataset.rows.map((_, i) => i + 1)
+
+  return {
+    data: [{ type: 'heatmap', x, y, z }],
+    layout: {
+      title: { text: title },
+      xaxis: { title: { text: recipe.xAxis } },
+      yaxis: { title: { text: recipe.yAxis } }
+    }
+  }
+}
+
 const buildCustomChart = (spec: ChartSpec & { mode: 'custom' }, _title: string): PlotlySpec => {
   const layout = (spec.plotlyLayout as Partial<Plotly.Layout>) ?? {}
   return {
@@ -99,6 +121,8 @@ export const buildPlotlySpec = (
       return buildPieChart(spec, dataset, title)
     case 'scatter':
       return buildScatterChart(spec, dataset, title)
+    case 'heatmap':
+      return buildHeatmapChart(spec, dataset, title)
     default:
       return buildBarChart(spec, dataset, title)
   }

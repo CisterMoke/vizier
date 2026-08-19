@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/preact'
 import { MantineProvider } from '@mantine/core'
-import { App } from './app'
 
 vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
@@ -16,6 +15,10 @@ vi.mock('./services/llmProvider', () => ({
   })
 }))
 
+vi.stubGlobal('import', { meta: { env: { VITE_LLM_API_KEY: 'test-key', VITE_LLM_PROVIDER: 'google', VITE_LLM_MODEL: 'gemini-2.0-flash' } } })
+
+import { App } from './app'
+
 beforeEach(() => {
   mapSchemaMock.mockReset()
   generateInsightsMock.mockReset()
@@ -27,22 +30,10 @@ it('renders analytics idea lab shell', () => {
   renderApp()
 
   expect(screen.getByRole('heading', { name: /analytics idea lab/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /map schema with ai/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /generate analytics/i })).toBeInTheDocument()
 })
 
-it('requires api key for schema mapping', async () => {
-  renderApp()
-
-  fireEvent.input(screen.getByLabelText(/api key/i), { target: { value: '' } })
-  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
-
-  await waitFor(() => {
-    expect(screen.getByText(/provide an api key/i)).toBeInTheDocument()
-  })
-  expect(mapSchemaMock).not.toHaveBeenCalled()
-})
-
-it('maps schema with llm and generates chart cards', async () => {
+it('chains schema mapping and insight generation in a single click', async () => {
   mapSchemaMock.mockResolvedValue({
     source: 'SQL: orders table',
     fields: [
@@ -77,14 +68,16 @@ it('maps schema with llm and generates chart cards', async () => {
     }
   ])
 
-  renderApp()
+  const { container } = renderApp()
 
-  fireEvent.input(screen.getByLabelText(/api key/i), { target: { value: 'demo-key' } })
-  fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
+  fireEvent.input(screen.getByLabelText(/data description/i), {
+    target: { value: 'orders(id int, total decimal)' }
+  })
 
-  await waitFor(() => expect(mapSchemaMock).toHaveBeenCalled())
+  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
 
-  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
+  await waitFor(() => expect(mapSchemaMock).toHaveBeenCalled(), { timeout: 10000 })
+  await waitFor(() => expect(generateInsightsMock).toHaveBeenCalled(), { timeout: 10000 })
 
   expect(await screen.findByRole('heading', { name: /insight candidates/i })).toBeInTheDocument()
   expect(screen.getAllByTestId('chart-card')).toHaveLength(1)

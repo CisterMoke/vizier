@@ -87,6 +87,31 @@ it('maps scatter chart recipe to a scatter trace with markers only', () => {
   expect((spec.data[0] as Plotly.Data).mode).toBe('markers')
 })
 
+it('maps heatmap chart recipe to a heatmap trace', () => {
+  const heatmapInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      mode: 'recipe',
+      chartType: 'heatmap',
+      xAxis: 'longitude',
+      yAxis: 'latitude',
+      zAxis: 'intensity'
+    }
+  }
+
+  const heatmapDataset: GeneratedDataset = {
+    ...mockDataset,
+    columns: ['longitude', 'latitude', 'intensity'],
+    rows: [
+      { longitude: -74.0, latitude: 40.7, intensity: 10 },
+      { longitude: -73.9, latitude: 40.8, intensity: 25 }
+    ]
+  }
+
+  const spec = buildPlotlySpec(heatmapInsight, heatmapDataset)
+  expect(spec.data[0]?.type).toBe('heatmap')
+})
+
 it('passes through custom plotly spec directly', () => {
   const customInsight: InsightCandidate = {
     ...mockBarInsight,

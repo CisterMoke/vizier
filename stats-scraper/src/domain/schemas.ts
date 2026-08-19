@@ -10,7 +10,10 @@ const semanticTypeSchema = z.enum([
   'currency',
   'percentage',
   'count',
-  'text'
+  'text',
+  'latitude',
+  'longitude',
+  'geohash'
 ])
 
 export const datasetFieldSchema = z.object({
@@ -31,9 +34,10 @@ export const datasetSchemaSchema = z.object({
 
 const chartRecipeSchema = z.object({
   mode: z.literal('recipe'),
-  chartType: z.enum(['bar', 'line', 'pie', 'scatter']),
+  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap']),
   xAxis: z.string().min(1),
-  yAxis: z.string().min(1)
+  yAxis: z.string().min(1),
+  zAxis: z.string().optional()
 })
 
 const chartCustomSchema = z.object({

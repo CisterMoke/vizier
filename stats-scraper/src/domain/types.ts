@@ -9,6 +9,9 @@ export type SemanticType =
   | 'percentage'
   | 'count'
   | 'text'
+  | 'latitude'
+  | 'longitude'
+  | 'geohash'
 
 export interface DatasetField {
   name: string
@@ -26,13 +29,14 @@ export interface DatasetSchema {
   warnings: string[]
 }
 
-export type ChartType = 'bar' | 'line' | 'pie' | 'scatter'
+export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap'
 
 export interface ChartRecipe {
   mode: 'recipe'
   chartType: ChartType
   xAxis: string
   yAxis: string
+  zAxis?: string
 }
 
 export interface ChartCustom {

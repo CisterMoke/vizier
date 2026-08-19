@@ -1,4 +1,4 @@
-import { Button, Paper, PasswordInput, Select, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Paper, PasswordInput, Select, Stack, Text, TextInput, Title } from '@mantine/core'
 import type { ProviderId } from '../services/llmProvider'
 
 interface InsightControlsProps {
@@ -8,9 +8,6 @@ interface InsightControlsProps {
   onProviderChange: (value: ProviderId) => void
   model: string
   onModelChange: (value: string) => void
-  onGenerate: () => void
-  isGenerating: boolean
-  disabled?: boolean
 }
 
 const PROVIDER_OPTIONS = [
@@ -29,10 +26,7 @@ export function InsightControls({
   provider,
   onProviderChange,
   model,
-  onModelChange,
-  onGenerate,
-  isGenerating,
-  disabled = false
+  onModelChange
 }: InsightControlsProps) {
   return (
     <Paper withBorder radius="lg" p="lg" className="bg-white/80 backdrop-blur-sm shadow-sm">
@@ -70,10 +64,6 @@ export function InsightControls({
           value={apiKey}
           onInput={(event) => onApiKeyChange((event.target as HTMLInputElement).value)}
         />
-
-        <Button type="button" onClick={onGenerate} loading={isGenerating} disabled={disabled || isGenerating}>
-          {isGenerating ? 'Generating insights...' : 'Generate insights'}
-        </Button>
       </Stack>
     </Paper>
   )
