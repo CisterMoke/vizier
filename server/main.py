@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from server.ratelimit import RateLimiter, RateLimitConfig
+from server.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 
 app = FastAPI(title="Analytics Idea Lab LLM Proxy")
 
@@ -30,11 +30,17 @@ app.add_middleware(
 
 # --- Rate limiting ---
 
-_rate_limit_config = RateLimitConfig(
+_per_ip_config = RateLimitConfig(
     max_requests=int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "10")),
     window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60")),
 )
-_rate_limiter = RateLimiter(_rate_limit_config)
+_per_ip_limiter = RateLimiter(_per_ip_config)
+
+_global_config = RateLimitConfig(
+    max_requests=int(os.environ.get("GLOBAL_RATE_LIMIT_MAX_REQUESTS", "100")),
+    window_seconds=int(os.environ.get("GLOBAL_RATE_LIMIT_WINDOW_SECONDS", "60")),
+)
+_global_limiter = GlobalRateLimiter(_global_config)
 
 
 @app.middleware("http")
@@ -44,23 +50,44 @@ async def rate_limit_middleware(request: Request, call_next):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-    allowed, remaining = _rate_limiter.check(client_ip)
 
-    if not allowed:
+    # Check per-IP limit first
+    ip_allowed, ip_remaining = _per_ip_limiter.check(client_ip)
+    if not ip_allowed:
         return JSONResponse(
             status_code=429,
             content={
-                "detail": f"Rate limit exceeded. Max {_rate_limit_config.max_requests} requests per {_rate_limit_config.window_seconds}s."
+                "detail": f"Per-IP rate limit exceeded. Max {_per_ip_config.max_requests} requests per {_per_ip_config.window_seconds}s."
             },
             headers={
-                "Retry-After": str(_rate_limit_config.window_seconds),
+                "Retry-After": str(_per_ip_config.window_seconds),
                 "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Limit": str(_per_ip_config.max_requests),
+                "X-RateLimit-Scope": "per-ip",
+            },
+        )
+
+    # Then check global limit
+    global_allowed, global_remaining = _global_limiter.check()
+    if not global_allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": f"Global rate limit exceeded. Max {_global_config.max_requests} requests per {_global_config.window_seconds}s across all users."
+            },
+            headers={
+                "Retry-After": str(_global_config.window_seconds),
+                "X-RateLimit-Global-Remaining": "0",
+                "X-RateLimit-Global-Limit": str(_global_config.max_requests),
+                "X-RateLimit-Scope": "global",
             },
         )
 
     response = await call_next(request)
-    response.headers["X-RateLimit-Remaining"] = str(remaining)
-    response.headers["X-RateLimit-Limit"] = str(_rate_limit_config.max_requests)
+    response.headers["X-RateLimit-Remaining"] = str(ip_remaining)
+    response.headers["X-RateLimit-Limit"] = str(_per_ip_config.max_requests)
+    response.headers["X-RateLimit-Global-Remaining"] = str(global_remaining)
+    response.headers["X-RateLimit-Global-Limit"] = str(_global_config.max_requests)
     return response
 
 # --- Prompts ---

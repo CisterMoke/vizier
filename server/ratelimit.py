@@ -1,4 +1,10 @@
-"""Simple in-memory rate limiter using a sliding window per client IP."""
+"""In-memory rate limiters using a sliding window approach.
+
+Provides two limiter types:
+- RateLimiter: per-client (e.g. per-IP) rate limiting
+- GlobalRateLimiter: total requests across all clients, protects against
+  botted/abuse scenarios where many IPs each stay under the per-IP limit
+"""
 
 import time
 from collections import defaultdict
@@ -36,4 +42,30 @@ class RateLimiter:
 
         entry.timestamps.append(now)
         remaining = self.config.max_requests - len(entry.timestamps)
+        return True, remaining
+
+
+class GlobalRateLimiter:
+    """Sliding window rate limiter that counts ALL requests regardless of source.
+
+    Use alongside RateLimiter for per-IP limits. The global limiter caps the
+    total throughput to protect the LLM API from abuse via many IPs.
+    """
+
+    def __init__(self, config: RateLimitConfig) -> None:
+        self.config = config
+        self._timestamps: list[float] = []
+
+    def check(self) -> tuple[bool, int]:
+        """Check if a request is allowed. Returns (allowed, remaining_requests)."""
+        now = time.monotonic()
+        window_start = now - self.config.window_seconds
+
+        self._timestamps = [ts for ts in self._timestamps if ts > window_start]
+
+        if len(self._timestamps) >= self.config.max_requests:
+            return False, 0
+
+        self._timestamps.append(now)
+        remaining = self.config.max_requests - len(self._timestamps)
         return True, remaining
