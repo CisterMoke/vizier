@@ -3,6 +3,35 @@ import type * as Plotly from 'plotly.js'
 
 export type PlotlySpec = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> }
 
+const FONT_COLOR = '#e2e8f0'
+const GRID_COLOR = 'rgba(148, 163, 184, 0.15)'
+const AXIS_COLOR = '#94a3b8'
+const PAPER_BG = 'rgba(15, 23, 42, 0.4)'
+const PLOT_BG = 'rgba(15, 23, 42, 0.2)'
+
+const darkLayout = (title: string): Partial<Plotly.Layout> => ({
+  title: { text: title, font: { color: FONT_COLOR, size: 14 } },
+  font: { color: FONT_COLOR },
+  paper_bgcolor: PAPER_BG,
+  plot_bgcolor: PLOT_BG,
+  margin: { l: 48, r: 16, b: 48, t: 48 }
+})
+
+const darkAxes = (xLabel?: string, yLabel?: string) => ({
+  xaxis: {
+    title: { text: xLabel ?? '', font: { color: FONT_COLOR } },
+    color: AXIS_COLOR,
+    gridcolor: GRID_COLOR,
+    zerolinecolor: GRID_COLOR
+  },
+  yaxis: {
+    title: { text: yLabel ?? '', font: { color: FONT_COLOR } },
+    color: AXIS_COLOR,
+    gridcolor: GRID_COLOR,
+    zerolinecolor: GRID_COLOR
+  }
+})
+
 const toDatum = (value: unknown): Plotly.Datum => {
   if (typeof value === 'number' || typeof value === 'string') {
     return value
@@ -26,11 +55,10 @@ const buildBarChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string
   const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
-    data: [{ type: 'bar', x, y }],
+    data: [{ type: 'bar', x, y, marker: { color: '#22d3ee' } }],
     layout: {
-      title: { text: title },
-      xaxis: { title: { text: spec.xAxis } },
-      yaxis: { title: { text: spec.yAxis } }
+      ...darkLayout(title),
+      ...darkAxes(spec.xAxis, spec.yAxis)
     }
   }
 }
@@ -40,11 +68,10 @@ const buildLineChart = (spec: ChartSpec, dataset: GeneratedDataset, title: strin
   const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
-    data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
+    data: [{ type: 'scatter', mode: 'lines+markers', x, y, line: { color: '#22d3ee' }, marker: { color: '#22d3ee' } }],
     layout: {
-      title: { text: title },
-      xaxis: { title: { text: spec.xAxis } },
-      yaxis: { title: { text: spec.yAxis } }
+      ...darkLayout(title),
+      ...darkAxes(spec.xAxis, spec.yAxis)
     }
   }
 }
@@ -54,8 +81,16 @@ const buildPieChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string
   const values = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
-    data: [{ type: 'pie', labels, values }],
-    layout: { title: { text: title } }
+    data: [{
+      type: 'pie',
+      labels,
+      values,
+      textfont: { color: FONT_COLOR },
+      marker: { colors: ['#22d3ee', '#818cf8', '#f472b6', '#fbbf24', '#34d399', '#fb923c', '#a78bfa', '#f9a8d4'] }
+    }],
+    layout: {
+      ...darkLayout(title)
+    }
   }
 }
 
@@ -64,11 +99,10 @@ const buildScatterChart = (spec: ChartSpec, dataset: GeneratedDataset, title: st
   const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
-    data: [{ type: 'scatter', mode: 'markers', x, y }],
+    data: [{ type: 'scatter', mode: 'markers', x, y, marker: { color: '#22d3ee', size: 8 } }],
     layout: {
-      title: { text: title },
-      xaxis: { title: { text: spec.xAxis } },
-      yaxis: { title: { text: spec.yAxis } }
+      ...darkLayout(title),
+      ...darkAxes(spec.xAxis, spec.yAxis)
     }
   }
 }
@@ -81,11 +115,10 @@ const buildHeatmapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: st
     : dataset.rows.map((_, i) => i + 1)
 
   return {
-    data: [{ type: 'heatmap', x, y, z }],
+    data: [{ type: 'heatmap', x, y, z, colorscale: 'Viridis' }],
     layout: {
-      title: { text: title },
-      xaxis: { title: { text: spec.xAxis } },
-      yaxis: { title: { text: spec.yAxis } }
+      ...darkLayout(title),
+      ...darkAxes(spec.xAxis, spec.yAxis)
     }
   }
 }
@@ -109,14 +142,14 @@ const buildGeomapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: str
           color: z,
           colorscale: 'Viridis',
           showscale: true,
-          colorbar: { title: { text: spec.zAxis ?? '' } }
+          colorbar: { title: { text: spec.zAxis ?? '', font: { color: FONT_COLOR } }, tickfont: { color: FONT_COLOR } }
         }
       } : {
         marker: { size: 8, color: '#22d3ee' }
       })
     }],
     layout: {
-      title: { text: title },
+      ...darkLayout(title),
       geo: {
         showland: true,
         landcolor: 'rgb(17, 24, 39)',
@@ -126,10 +159,9 @@ const buildGeomapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: str
         countrycolor: 'rgb(55, 65, 81)',
         showcoastlines: true,
         coastlinecolor: 'rgb(55, 65, 81)',
-        projection: { type: 'natural earth' }
-      },
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent'
+        projection: { type: 'natural earth' },
+        showframe: false
+      }
     }
   }
 }
@@ -139,8 +171,9 @@ const buildCustomChart = (spec: ChartSpec, _title: string): PlotlySpec => {
   return {
     data: (spec.plotlyData as Plotly.Data[]) ?? [],
     layout: {
+      ...darkLayout(_title),
       ...layout,
-      title: layout.title ?? { text: _title }
+      title: layout.title ?? { text: _title, font: { color: FONT_COLOR } }
     }
   }
 }

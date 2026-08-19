@@ -96,10 +96,7 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
             data={spec.data}
             layout={{
               ...spec.layout,
-              autosize: true,
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              margin: { l: 32, r: 16, b: 40, t: 40 }
+              autosize: true
             }}
             config={{ responsive: true, displaylogo: false }}
             style={{ width: '100%', height: '400px' }}
