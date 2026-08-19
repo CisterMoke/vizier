@@ -97,7 +97,7 @@ export function DataInputPanel({ onGenerate, onApplyData, isGenerating, isApplyi
               id="schema-input"
               minRows={4}
               autosize
-              placeholder="e.g. orders(id int, customer_id int, total decimal, status varchar, created_at timestamp)"
+              placeholder="Describe your dataset in words, provide a schema and/or a few sample rows. E.g. 'This dataset is obtained from the WA State DOL and contains EV registration records with fields like county, make, model, electric_range...'"
               value={schemaText}
               onInput={(event) => setSchemaText((event.target as HTMLTextAreaElement).value)}
             />

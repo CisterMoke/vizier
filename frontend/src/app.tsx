@@ -1,9 +1,8 @@
 import { useRef, useState } from 'preact/hooks'
-import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Badge, Container, Paper, Stack, Text, Title } from '@mantine/core'
 import { ChartCarousel } from './components/ChartCarousel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
-import { downloadExportReport } from './lib/exportReport'
 import { callGenerate, applyData } from './services/apiClient'
 import { generateMockDataset } from './services/mockData'
 import { buildDatasetFromRaw } from './services/dataIngest'
@@ -114,36 +113,18 @@ export function App() {
     workspace.removeInsight(insightId)
   }
 
-  const handleExportReport = () => {
-    const payload = workspace.exportReport()
-    const stamp = new Date().toISOString().slice(0, 10)
-    downloadExportReport(payload, `analytics-report-${stamp}.json`)
-  }
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#0e2a47,_transparent_50%),radial-gradient(circle_at_bottom_right,_#1a1240,_transparent_50%),#0a0a0f] py-10">
       <Container size="xl">
         <Stack gap="lg">
           <Paper withBorder radius="xl" p="xl" className="bg-gray-900/60 backdrop-blur-md shadow-lg border-gray-700/50">
-            <Group justify="space-between" align="flex-start" wrap="wrap">
-              <div>
-                <Badge variant="light" color="cyan" mb={8}>
-                  Hackathon Mode
-                </Badge>
-                <Title order={1}>Analytics Idea Lab</Title>
-                <Text c="dimmed" mt={6}>
-                  Map any data source into a dataset schema, generate hypotheses, and visualize analytics instantly.
-                </Text>
-              </div>
-              <Button
-                type="button"
-                onClick={handleExportReport}
-                disabled={workspace.insights.length === 0}
-                variant="filled"
-              >
-                Export report
-              </Button>
-            </Group>
+            <Badge variant="light" color="cyan" mb={8}>
+              Hackathon Mode
+            </Badge>
+            <Title order={1}>Analytics Idea Lab</Title>
+            <Text c="dimmed" mt={6}>
+              Map any data source into a dataset schema, generate hypotheses, and visualize analytics instantly.
+            </Text>
           </Paper>
 
           {generationError ? (

@@ -127,7 +127,7 @@ Include warnings for any fields you are uncertain about."""
 
 INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and jsonPath values, generate creative analytics hypotheses suitable for a hackathon demo.
 
-For each insight, provide a chartSpec object that MUST include "mode": "recipe" and a "traces" array.
+For each insight, provide a chartSpec object that MUST include "mode": "recipe" and a "traces" array with AT LEAST ONE trace.
 
 Each trace in the traces array has:
 - chartType: bar, line, pie, scatter, heatmap, or geomap
@@ -238,7 +238,7 @@ class TraceSpec(BaseModel):
 
 class ChartSpec(BaseModel):
     mode: str = "recipe"
-    traces: list[TraceSpec] = []
+    traces: list[TraceSpec] = Field(default_factory=lambda: [TraceSpec()])
     plotlyData: list[Any] | None = None
     plotlyLayout: dict[str, Any] | None = None
 

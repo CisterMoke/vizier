@@ -52,7 +52,7 @@ const traceSpecSchema = z.object({
 
 export const chartSpecSchema = z.object({
   mode: z.enum(['recipe', 'custom']).default('recipe'),
-  traces: z.array(traceSpecSchema).default([]),
+  traces: z.array(traceSpecSchema).min(1).default([]),
   plotlyData: z.array(z.unknown()).nullable().optional(),
   plotlyLayout: z.record(z.string(), z.unknown()).nullable().optional()
 })
