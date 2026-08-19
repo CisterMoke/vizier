@@ -11,10 +11,13 @@ from typing import Any
 
 import aiohttp
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+
+from server.ratelimit import RateLimiter, RateLimitConfig
 
 app = FastAPI(title="Analytics Idea Lab LLM Proxy")
 
@@ -24,6 +27,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Rate limiting ---
+
+_rate_limit_config = RateLimitConfig(
+    max_requests=int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "10")),
+    window_seconds=int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60")),
+)
+_rate_limiter = RateLimiter(_rate_limit_config)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Skip rate limiting for health check
+    if request.url.path == "/api/health":
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, remaining = _rate_limiter.check(client_ip)
+
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": f"Rate limit exceeded. Max {_rate_limit_config.max_requests} requests per {_rate_limit_config.window_seconds}s."
+            },
+            headers={
+                "Retry-After": str(_rate_limit_config.window_seconds),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+    response = await call_next(request)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Limit"] = str(_rate_limit_config.max_requests)
+    return response
 
 # --- Prompts ---
 

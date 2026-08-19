@@ -29,6 +29,9 @@ export LLM_API_KEY="your-google-or-mistral-api-key"
 # Optional: change provider/model defaults
 export LLM_PROVIDER="google"  # or "mistral"
 export LLM_MODEL="gemini-2.0-flash"
+# Optional: rate limiting (defaults: 10 requests per 60s per IP)
+export RATE_LIMIT_MAX_REQUESTS="10"
+export RATE_LIMIT_WINDOW_SECONDS="60"
 ```
 
 ### Run locally
