@@ -121,12 +121,3 @@ export interface RawDataResult {
   rows: Record<string, unknown>[]
   rowCount: number
 }
-
-export interface FieldMapping {
-  insightId: string
-  mappings: Record<string, string>
-}
-
-export interface FieldMappingResult {
-  mappings: FieldMapping[]
-}
