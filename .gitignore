@@ -1,3 +1,22 @@
+.agents/
 .worktrees/
 .superpowers/
+docs/
 .env
+.gitignore
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.sh
+DEPLOYMENT.md
+opencode.json
+skills-lock.json

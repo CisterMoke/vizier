@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from server.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+from backend.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 
 # Load .env file before reading any env vars
 load_dotenv()
@@ -244,7 +244,7 @@ async def generate(request: GenerateRequest) -> dict:
     field_mappings: list = []
 
     if request.data_source_mode == "file" and request.file_content:
-        from server.parser import parse_data
+        from backend.parser import parse_data
         real_data = parse_data(request.file_content, request.file_format or "csv")
 
     elif request.data_source_mode == "rest" and request.rest_url:
@@ -254,12 +254,12 @@ async def generate(request: GenerateRequest) -> dict:
             request.rest_headers or "",
             request.rest_body or "",
         )
-        from server.parser import parse_data
+        from backend.parser import parse_data
         real_data = parse_data(raw_text, "json")
 
     elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
         raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
-        from server.parser import parse_data
+        from backend.parser import parse_data
         real_data = parse_data(raw_json, "json")
 
     # 4. Map fields if we have real data
