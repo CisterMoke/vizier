@@ -20,7 +20,7 @@ export interface GenerateRequest {
   schemaText: string
   dataSource: {
     mode: DataSourceMode
-    fileContent?: string
+    file?: File
     fileFormat?: FileFormat
     rest?: RestApiConfig
     sql?: SqlConfig
@@ -32,27 +32,33 @@ interface DataInputPanelProps {
   isGenerating: boolean
 }
 
+const MAX_FILE_SIZE_MB = 10
+
 export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
-  const [fileContent, setFileContent] = useState<string | undefined>(undefined)
+  const [file, setFile] = useState<File | null>(null)
   const [fileFormat, setFileFormat] = useState<FileFormat>('csv')
-  const [fileName, setFileName] = useState<string | undefined>(undefined)
   const [restConfig, setRestConfig] = useState<RestApiConfig>({ method: 'GET', url: '', headers: '', body: '' })
   const [sqlConfig, setSqlConfig] = useState<SqlConfig>({ connectionString: '', query: '' })
+  const [fileError, setFileError] = useState<string | null>(null)
 
-  const handleFileUpload = (file: File | null) => {
-    if (!file) {
-      setFileContent(undefined)
-      setFileName(undefined)
+  const handleFileUpload = (uploadedFile: File | null) => {
+    setFileError(null)
+
+    if (!uploadedFile) {
+      setFile(null)
       return
     }
-    setFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setFileContent(reader.result as string)
+
+    const sizeMB = uploadedFile.size / (1024 * 1024)
+    if (sizeMB > MAX_FILE_SIZE_MB) {
+      setFileError(`File too large (${sizeMB.toFixed(1)} MB). Max ${MAX_FILE_SIZE_MB} MB.`)
+      setFile(null)
+      return
     }
-    reader.readAsText(file)
+
+    setFile(uploadedFile)
   }
 
   const handleSubmit = async (event: Event) => {
@@ -63,7 +69,7 @@ export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps
       schemaText,
       dataSource: {
         mode: dataSourceMode,
-        fileContent,
+        file: dataSourceMode === 'file' ? (file ?? undefined) : undefined,
         fileFormat,
         rest: dataSourceMode === 'rest' ? restConfig : undefined,
         sql: dataSourceMode === 'sql' ? sqlConfig : undefined
@@ -111,7 +117,7 @@ export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps
                   <FileInput
                     label="Upload data file"
                     placeholder="Choose file"
-                    value={fileName ? new File([], fileName) : null}
+                    value={file}
                     onChange={handleFileUpload}
                     accept=".csv,.json,.jsonl,.txt"
                     style={{ flex: 1 }}
@@ -128,9 +134,17 @@ export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps
                     w={140}
                   />
                 </Group>
-                {fileName ? (
-                  <Text c="green" size="sm">Loaded: {fileName}</Text>
+                {file ? (
+                  <Text c="green" size="sm">
+                    Loaded: {file.name} ({(file.size / 1024).toFixed(0)} KB)
+                  </Text>
                 ) : null}
+                {fileError ? (
+                  <Text c="red" size="sm">{fileError}</Text>
+                ) : null}
+                <Text c="dimmed" size="xs">
+                  Max {MAX_FILE_SIZE_MB} MB. Large files are automatically sampled to the first 5000 rows.
+                </Text>
               </Stack>
             ) : null}
 

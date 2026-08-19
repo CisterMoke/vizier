@@ -8,13 +8,14 @@ REST API calls use aiohttp, data parsing uses pandas.
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import aiohttp
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -41,6 +42,9 @@ app.add_middleware(
 # --- LLM configuration (server-side only) ---
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "google:gemini-3.5-flash-lite")
+
+# Max file upload size: 10 MB
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024
 
 
 # --- Rate limiting ---
@@ -212,13 +216,11 @@ class FieldMappingResult(BaseModel):
     mappings: list[dict[str, Any]]
 
 
-# --- Request model ---
+# --- Request model (for JSON requests without file upload) ---
 
 class GenerateRequest(BaseModel):
     schema_text: str = Field(alias="schemaText")
     data_source_mode: str = Field(default="none", alias="dataSourceMode")
-    file_content: str | None = Field(default=None, alias="fileContent")
-    file_format: str | None = Field(default=None, alias="fileFormat")
     rest_method: str | None = Field(default=None, alias="restMethod")
     rest_url: str | None = Field(default=None, alias="restUrl")
     rest_headers: str | None = Field(default=None, alias="restHeaders")
@@ -283,15 +285,17 @@ async def fetch_sql_data(connection_string: str, query: str) -> str:
     return df.to_json(orient="records", force_ascii=False)
 
 
-# --- Routes ---
+# --- Shared pipeline ---
 
-@app.post("/api/generate")
-async def generate(request: GenerateRequest) -> dict:
-    """Full pipeline: map schema → generate insights → fetch real data → map fields."""
+async def _run_pipeline(
+    schema_text: str,
+    real_data: dict | None = None,
+) -> dict:
+    """Run the full LLM pipeline: schema mapping → insights → field mapping."""
     # 1. Map schema
     schema = await call_llm(
         MAP_SCHEMA_PROMPT,
-        f"Analyze this data description and extract the dataset schema:\n\n{request.schema_text}",
+        f"Analyze this data description and extract the dataset schema:\n\n{schema_text}",
         DatasetSchema,
     )
 
@@ -309,38 +313,16 @@ async def generate(request: GenerateRequest) -> dict:
         ),
     )
 
-    # 3. Fetch real data if requested
-    real_data: dict | None = None
+    # 3. Map fields if we have real data
     field_mappings: list = []
-
-    if request.data_source_mode == "file" and request.file_content:
-        from backend.parser import parse_data
-        real_data = parse_data(request.file_content, request.file_format or "csv")
-
-    elif request.data_source_mode == "rest" and request.rest_url:
-        raw_text = await fetch_rest_data(
-            request.rest_method or "GET",
-            request.rest_url,
-            request.rest_headers or "",
-            request.rest_body or "",
-        )
-        from backend.parser import parse_data
-        real_data = parse_data(raw_text, "json")
-
-    elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
-        raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
-        from backend.parser import parse_data
-        real_data = parse_data(raw_json, "json")
-
-    # 4. Map fields if we have real data
     if real_data and real_data.get("rowCount", 0) > 0:
         insight_axes = [
             {
                 "insightId": ins.get("id", ""),
-                "chartType": ins.get("chartSpec", {}).get("chartType"),
-                "xAxis": ins.get("chartSpec", {}).get("xAxis"),
-                "yAxis": ins.get("chartSpec", {}).get("yAxis"),
-                "zAxis": ins.get("chartSpec", {}).get("zAxis"),
+                "chartType": ins.get("chartSpec", {}).get("chartType") if ins.get("chartSpec") else None,
+                "xAxis": ins.get("chartSpec", {}).get("xAxis") if ins.get("chartSpec") else None,
+                "yAxis": ins.get("chartSpec", {}).get("yAxis") if ins.get("chartSpec") else None,
+                "zAxis": ins.get("chartSpec", {}).get("zAxis") if ins.get("chartSpec") else None,
             }
             for ins in insights.get("insights", [])
         ]
@@ -361,6 +343,64 @@ async def generate(request: GenerateRequest) -> dict:
         "realData": real_data,
         "fieldMappings": field_mappings,
     }
+
+
+# --- Routes ---
+
+@app.post("/api/generate")
+async def generate(request: GenerateRequest) -> dict:
+    """Full pipeline for schema-only, REST API, or SQL data sources."""
+    real_data: dict | None = None
+
+    if request.data_source_mode == "rest" and request.rest_url:
+        raw_text = await fetch_rest_data(
+            request.rest_method or "GET",
+            request.rest_url,
+            request.rest_headers or "",
+            request.rest_body or "",
+        )
+        from backend.parser import parse_data
+        real_data = parse_data(raw_text, "json")
+
+    elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
+        raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
+        from backend.parser import parse_data
+        real_data = parse_data(raw_json, "json")
+
+    return await _run_pipeline(request.schema_text, real_data)
+
+
+@app.post("/api/generate-upload")
+async def generate_upload(
+    schemaText: str = Form(...),
+    file: UploadFile = File(...),
+    fileFormat: str = Form(default="csv"),
+) -> dict:
+    """Full pipeline with file upload via multipart form data.
+
+    The file is saved to a temp file and parsed by pandas directly,
+    avoiding loading the entire file content into memory as a string.
+    """
+    # Check file size
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Max {MAX_FILE_SIZE // (1024 * 1024)} MB. Got {len(content) // (1024 * 1024)} MB.",
+        )
+
+    # Save to temp file and parse
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=f".{fileFormat}", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        from backend.parser import parse_data
+        real_data = parse_data(tmp_path, fileFormat)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return await _run_pipeline(schemaText, real_data)
 
 
 @app.get("/api/health")

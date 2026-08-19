@@ -11,17 +11,47 @@ export interface GenerateResponse {
 
 const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000'
 
-export const callGenerate = async (request: GenerateRequest, backendUrl?: string): Promise<GenerateResponse> => {
-  const url = `${backendUrl ?? DEFAULT_BACKEND_URL}/api/generate`
+async function parseResponse(response: Response): Promise<GenerateResponse> {
+  const raw = await response.json()
 
-  const response = await fetch(url, {
+  return {
+    schema: parseDatasetSchema(raw.schema),
+    insights: parseInsightEnvelope(raw.insights).insights,
+    realData: raw.realData ?? null,
+    fieldMappings: raw.fieldMappings ?? []
+  }
+}
+
+export const callGenerate = async (request: GenerateRequest, backendUrl?: string): Promise<GenerateResponse> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  if (request.dataSource.mode === 'file' && request.dataSource.file) {
+    // Use multipart form data for file uploads
+    const formData = new FormData()
+    formData.append('schemaText', request.schemaText)
+    formData.append('file', request.dataSource.file)
+    formData.append('fileFormat', request.dataSource.fileFormat ?? 'csv')
+
+    const response = await fetch(`${baseUrl}/api/generate-upload`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Backend error ${response.status}: ${errorText}`)
+    }
+
+    return parseResponse(response)
+  }
+
+  // JSON request for schema-only, REST, or SQL modes
+  const response = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       schemaText: request.schemaText,
       dataSourceMode: request.dataSource.mode,
-      fileContent: request.dataSource.fileContent,
-      fileFormat: request.dataSource.fileFormat,
       restMethod: request.dataSource.rest?.method,
       restUrl: request.dataSource.rest?.url,
       restHeaders: request.dataSource.rest?.headers,
@@ -36,12 +66,5 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     throw new Error(`Backend error ${response.status}: ${errorText}`)
   }
 
-  const raw = await response.json()
-
-  return {
-    schema: parseDatasetSchema(raw.schema),
-    insights: parseInsightEnvelope(raw.insights).insights,
-    realData: raw.realData ?? null,
-    fieldMappings: raw.fieldMappings ?? []
-  }
+  return parseResponse(response)
 }
