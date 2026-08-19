@@ -32,12 +32,34 @@ export interface DatasetSchema {
 
 export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap' | 'geomap'
 
+export interface PlotlyAggregation {
+  func: 'sum' | 'mean' | 'count' | 'min' | 'max' | 'median' | 'first' | 'last'
+  target: string
+}
+
+export interface PlotlyTransform {
+  type: 'aggregate'
+  groups: string
+  aggregations: PlotlyAggregation[]
+}
+
+export interface TraceSpec {
+  chartType: ChartType
+  xAxis: string
+  yAxis: string
+  zAxis?: string | null
+  transform?: PlotlyTransform | null
+  yaxis2?: string | null
+  name?: string | null
+}
+
 export interface ChartSpec {
   mode: 'recipe' | 'custom'
   chartType?: ChartType
   xAxis?: string
   yAxis?: string
   zAxis?: string | null
+  traces?: TraceSpec[] | null
   plotlyData?: unknown[] | null
   plotlyLayout?: Record<string, unknown> | null
 }

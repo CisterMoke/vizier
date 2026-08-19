@@ -1,4 +1,4 @@
-import { parseDatasetSchema } from './schemas'
+import { parseDatasetSchema, parseInsightEnvelope } from './schemas'
 
 it('accepts a minimal dataset schema payload', () => {
   const parsed = parseDatasetSchema({
@@ -37,4 +37,84 @@ it('accepts a dataset schema with jsonPath on fields', () => {
 
   expect(parsed.fields[0].jsonPath).toBe('$.county')
   expect(parsed.fields[1].jsonPath).toBe('$.geocoded_column.longitude')
+})
+
+it('parses an insight with traces array and transforms', () => {
+  const parsed = parseInsightEnvelope({
+    insights: [
+      {
+        id: 'ins-1',
+        title: 'EV Count + Avg Range',
+        summary: 'Bar chart with line overlay',
+        confidence: 0.9,
+        hypothesis: 'Urban counties have more EVs',
+        metricDescription: 'Count and avg range by county',
+        chartSpec: {
+          mode: 'recipe',
+          traces: [
+            {
+              chartType: 'bar',
+              xAxis: '$.county',
+              yAxis: '$.dol_vehicle_id',
+              transform: {
+                type: 'aggregate',
+                groups: '$.county',
+                aggregations: [{ func: 'count', target: 'y' }]
+              },
+              name: 'EV Count'
+            },
+            {
+              chartType: 'line',
+              xAxis: '$.county',
+              yAxis: '$.electric_range',
+              transform: {
+                type: 'aggregate',
+                groups: '$.county',
+                aggregations: [{ func: 'mean', target: 'y' }]
+              },
+              yaxis2: 'y2',
+              name: 'Avg Range'
+            }
+          ]
+        },
+        dataProfile: null,
+        assumptions: []
+      }
+    ]
+  })
+
+  const spec = parsed.insights[0].chartSpec!
+  expect(spec.traces).toHaveLength(2)
+  expect(spec.traces![0].chartType).toBe('bar')
+  expect(spec.traces![0].transform!.type).toBe('aggregate')
+  expect(spec.traces![0].transform!.aggregations[0].func).toBe('count')
+  expect(spec.traces![1].yaxis2).toBe('y2')
+})
+
+it('parses an insight with shorthand axes (no traces)', () => {
+  const parsed = parseInsightEnvelope({
+    insights: [
+      {
+        id: 'ins-2',
+        title: 'Simple bar',
+        summary: 'Just a bar chart',
+        confidence: 0.8,
+        hypothesis: 'Revenue varies',
+        metricDescription: 'Revenue by category',
+        chartSpec: {
+          mode: 'recipe',
+          chartType: 'bar',
+          xAxis: '$.category',
+          yAxis: '$.revenue'
+        },
+        dataProfile: null,
+        assumptions: []
+      }
+    ]
+  })
+
+  const spec = parsed.insights[0].chartSpec!
+  expect(spec.traces).toBeUndefined()
+  expect(spec.chartType).toBe('bar')
+  expect(spec.xAxis).toBe('$.category')
 })

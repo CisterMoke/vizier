@@ -33,12 +33,34 @@ export const datasetSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
+const plotlyAggregationSchema = z.object({
+  func: z.enum(['sum', 'mean', 'count', 'min', 'max', 'median', 'first', 'last']),
+  target: z.string()
+})
+
+const plotlyTransformSchema = z.object({
+  type: z.literal('aggregate'),
+  groups: z.string(),
+  aggregations: z.array(plotlyAggregationSchema)
+})
+
+const traceSpecSchema = z.object({
+  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']),
+  xAxis: z.string(),
+  yAxis: z.string(),
+  zAxis: z.string().nullable().optional(),
+  transform: plotlyTransformSchema.nullable().optional(),
+  yaxis2: z.string().nullable().optional(),
+  name: z.string().nullable().optional()
+})
+
 export const chartSpecSchema = z.object({
   mode: z.enum(['recipe', 'custom']).default('recipe'),
   chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']).optional(),
   xAxis: z.string().optional(),
   yAxis: z.string().optional(),
   zAxis: z.string().nullable().optional(),
+  traces: z.array(traceSpecSchema).nullable().optional(),
   plotlyData: z.array(z.unknown()).nullable().optional(),
   plotlyLayout: z.record(z.string(), z.unknown()).nullable().optional()
 })
