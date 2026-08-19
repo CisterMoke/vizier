@@ -101,10 +101,10 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe,_transparent_45%),radial-gradient(circle_at_bottom_right,_#fef3c7,_transparent_45%),#f8fafc] py-10">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#0e2a47,_transparent_50%),radial-gradient(circle_at_bottom_right,_#1a1240,_transparent_50%),#0a0a0f] py-10">
       <Container size="xl">
         <Stack gap="lg">
-          <Paper withBorder radius="xl" p="xl" className="bg-white/85 backdrop-blur-md shadow-md">
+          <Paper withBorder radius="xl" p="xl" className="bg-gray-900/60 backdrop-blur-md shadow-lg border-gray-700/50">
             <Group justify="space-between" align="flex-start" wrap="wrap">
               <div>
                 <Badge variant="light" color="cyan" mb={8}>

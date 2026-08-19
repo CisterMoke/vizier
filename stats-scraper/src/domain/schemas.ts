@@ -32,21 +32,15 @@ export const datasetSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
-const chartRecipeSchema = z.object({
-  mode: z.literal('recipe'),
-  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap']),
-  xAxis: z.string().min(1),
-  yAxis: z.string().min(1),
-  zAxis: z.string().optional()
+export const chartSpecSchema = z.object({
+  mode: z.enum(['recipe', 'custom']).default('recipe'),
+  chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap']).optional(),
+  xAxis: z.string().optional(),
+  yAxis: z.string().optional(),
+  zAxis: z.string().optional(),
+  plotlyData: z.array(z.unknown()).optional(),
+  plotlyLayout: z.record(z.string(), z.unknown()).optional()
 })
-
-const chartCustomSchema = z.object({
-  mode: z.literal('custom'),
-  plotlyData: z.array(z.unknown()),
-  plotlyLayout: z.record(z.string(), z.unknown())
-})
-
-export const chartSpecSchema = z.discriminatedUnion('mode', [chartRecipeSchema, chartCustomSchema])
 
 const dataColumnSpecSchema = z.object({
   name: z.string().min(1),

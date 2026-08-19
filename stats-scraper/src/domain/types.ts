@@ -31,21 +31,15 @@ export interface DatasetSchema {
 
 export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap'
 
-export interface ChartRecipe {
-  mode: 'recipe'
-  chartType: ChartType
-  xAxis: string
-  yAxis: string
+export interface ChartSpec {
+  mode: 'recipe' | 'custom'
+  chartType?: ChartType
+  xAxis?: string
+  yAxis?: string
   zAxis?: string
+  plotlyData?: unknown[]
+  plotlyLayout?: Record<string, unknown>
 }
-
-export interface ChartCustom {
-  mode: 'custom'
-  plotlyData: unknown[]
-  plotlyLayout: Record<string, unknown>
-}
-
-export type ChartSpec = ChartRecipe | ChartCustom
 
 export type DataGenerator = 'category' | 'normal' | 'uniform' | 'linear' | 'constant'
 

@@ -43,12 +43,7 @@ it('maps bar chart recipe to a bar trace', () => {
 it('maps line chart recipe to a scatter trace with lines+markers', () => {
   const lineInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: {
-      mode: 'recipe',
-      chartType: 'line',
-      xAxis: 'week',
-      yAxis: 'count'
-    }
+    chartSpec: { mode: 'recipe', chartType: 'line', xAxis: 'week', yAxis: 'count' }
   }
 
   const spec = buildPlotlySpec(lineInsight, mockDataset)
@@ -59,12 +54,7 @@ it('maps line chart recipe to a scatter trace with lines+markers', () => {
 it('maps pie chart recipe to a pie trace', () => {
   const pieInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: {
-      mode: 'recipe',
-      chartType: 'pie',
-      xAxis: 'segment',
-      yAxis: 'share'
-    }
+    chartSpec: { mode: 'recipe', chartType: 'pie', xAxis: 'segment', yAxis: 'share' }
   }
 
   const spec = buildPlotlySpec(pieInsight, mockDataset)
@@ -74,12 +64,7 @@ it('maps pie chart recipe to a pie trace', () => {
 it('maps scatter chart recipe to a scatter trace with markers only', () => {
   const scatterInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: {
-      mode: 'recipe',
-      chartType: 'scatter',
-      xAxis: 'orders',
-      yAxis: 'revenue'
-    }
+    chartSpec: { mode: 'recipe', chartType: 'scatter', xAxis: 'orders', yAxis: 'revenue' }
   }
 
   const spec = buildPlotlySpec(scatterInsight, mockDataset)
@@ -90,13 +75,7 @@ it('maps scatter chart recipe to a scatter trace with markers only', () => {
 it('maps heatmap chart recipe to a heatmap trace', () => {
   const heatmapInsight: InsightCandidate = {
     ...mockBarInsight,
-    chartSpec: {
-      mode: 'recipe',
-      chartType: 'heatmap',
-      xAxis: 'longitude',
-      yAxis: 'latitude',
-      zAxis: 'intensity'
-    }
+    chartSpec: { mode: 'recipe', chartType: 'heatmap', xAxis: 'longitude', yAxis: 'latitude', zAxis: 'intensity' }
   }
 
   const heatmapDataset: GeneratedDataset = {
@@ -125,6 +104,20 @@ it('passes through custom plotly spec directly', () => {
   const spec = buildPlotlySpec(customInsight, mockDataset)
   expect(spec.data[0]?.type).toBe('heatmap')
   expect((spec.layout as { title: { text: string } }).title.text).toBe('Custom Heatmap')
+})
+
+it('works when mode is omitted (defaults to recipe)', () => {
+  const noModeInsight: InsightCandidate = {
+    ...mockBarInsight,
+    chartSpec: {
+      chartType: 'bar',
+      xAxis: 'category',
+      yAxis: 'revenue'
+    } as InsightCandidate['chartSpec']
+  }
+
+  const spec = buildPlotlySpec(noModeInsight, mockDataset)
+  expect(spec.data[0]?.type).toBe('bar')
 })
 
 it('returns the required plotly contract shape', () => {

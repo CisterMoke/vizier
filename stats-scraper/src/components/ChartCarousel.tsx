@@ -64,7 +64,7 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
         withBorder
         radius="lg"
         padding="lg"
-        className="bg-white/85 backdrop-blur-sm shadow-md"
+        className="bg-gray-900/50 backdrop-blur-sm shadow-lg border-gray-700/50"
       >
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">

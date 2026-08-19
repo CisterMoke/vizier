@@ -17,7 +17,7 @@ export function SchemaInputPanel({ onGenerate, isGenerating }: SchemaInputPanelP
   }
 
   return (
-    <Paper withBorder radius="lg" p="lg" className="bg-white/80 backdrop-blur-sm shadow-sm">
+    <Paper withBorder radius="lg" p="lg" className="bg-gray-900/50 backdrop-blur-sm shadow-sm border-gray-700/50">
       <Stack gap="md">
         <div>
           <Title order={3}>Data Input</Title>

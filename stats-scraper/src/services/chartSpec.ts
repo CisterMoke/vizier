@@ -1,4 +1,4 @@
-import type { ChartRecipe, ChartSpec, GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { ChartSpec, GeneratedDataset, InsightCandidate } from '../domain/types'
 import type * as Plotly from 'plotly.js'
 
 export type PlotlySpec = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> }
@@ -21,37 +21,37 @@ const toNumber = (value: unknown): number => {
   return 0
 }
 
-const buildBarChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
-  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
+const buildBarChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const x = dataset.rows.map((row) => toDatum(row[spec.xAxis ?? '']))
+  const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
     data: [{ type: 'bar', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis } },
-      yaxis: { title: { text: recipe.yAxis } }
+      xaxis: { title: { text: spec.xAxis } },
+      yaxis: { title: { text: spec.yAxis } }
     }
   }
 }
 
-const buildLineChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
-  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
+const buildLineChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const x = dataset.rows.map((row) => toDatum(row[spec.xAxis ?? '']))
+  const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
     data: [{ type: 'scatter', mode: 'lines+markers', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis } },
-      yaxis: { title: { text: recipe.yAxis } }
+      xaxis: { title: { text: spec.xAxis } },
+      yaxis: { title: { text: spec.yAxis } }
     }
   }
 }
 
-const buildPieChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const labels = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
-  const values = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
+const buildPieChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const labels = dataset.rows.map((row) => toDatum(row[spec.xAxis ?? '']))
+  const values = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
     data: [{ type: 'pie', labels, values }],
@@ -59,38 +59,38 @@ const buildPieChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: st
   }
 }
 
-const buildScatterChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const x = dataset.rows.map((row) => toDatum(row[recipe.xAxis]))
-  const y = dataset.rows.map((row) => toDatum(row[recipe.yAxis]))
+const buildScatterChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const x = dataset.rows.map((row) => toDatum(row[spec.xAxis ?? '']))
+  const y = dataset.rows.map((row) => toDatum(row[spec.yAxis ?? '']))
 
   return {
     data: [{ type: 'scatter', mode: 'markers', x, y }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis } },
-      yaxis: { title: { text: recipe.yAxis } }
+      xaxis: { title: { text: spec.xAxis } },
+      yaxis: { title: { text: spec.yAxis } }
     }
   }
 }
 
-const buildHeatmapChart = (recipe: ChartRecipe, dataset: GeneratedDataset, title: string): PlotlySpec => {
-  const x = dataset.rows.map((row) => toNumber(row[recipe.xAxis]))
-  const y = dataset.rows.map((row) => toNumber(row[recipe.yAxis]))
-  const z = recipe.zAxis
-    ? dataset.rows.map((row) => toNumber(row[recipe.zAxis!]))
+const buildHeatmapChart = (spec: ChartSpec, dataset: GeneratedDataset, title: string): PlotlySpec => {
+  const x = dataset.rows.map((row) => toNumber(row[spec.xAxis ?? '']))
+  const y = dataset.rows.map((row) => toNumber(row[spec.yAxis ?? '']))
+  const z = spec.zAxis
+    ? dataset.rows.map((row) => toNumber(row[spec.zAxis!]))
     : dataset.rows.map((_, i) => i + 1)
 
   return {
     data: [{ type: 'heatmap', x, y, z }],
     layout: {
       title: { text: title },
-      xaxis: { title: { text: recipe.xAxis } },
-      yaxis: { title: { text: recipe.yAxis } }
+      xaxis: { title: { text: spec.xAxis } },
+      yaxis: { title: { text: spec.yAxis } }
     }
   }
 }
 
-const buildCustomChart = (spec: ChartSpec & { mode: 'custom' }, _title: string): PlotlySpec => {
+const buildCustomChart = (spec: ChartSpec, _title: string): PlotlySpec => {
   const layout = (spec.plotlyLayout as Partial<Plotly.Layout>) ?? {}
   return {
     data: (spec.plotlyData as Plotly.Data[]) ?? [],

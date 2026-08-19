@@ -36,23 +36,27 @@ Include warnings for any fields you are uncertain about.`
 
 const INSIGHT_PROMPT = `You are an analytics brainstorming assistant. Given a dataset schema with field semantics and sample values, generate creative analytics hypotheses suitable for a hackathon demo.
 
-For each insight, provide:
-- A chartSpec with mode "recipe" specifying chartType (bar, line, pie, scatter, or heatmap), xAxis (column name string), yAxis (column name string), and optionally zAxis (column name string for heatmap intensity).
-  - Use "heatmap" when the data has geographic coordinates (latitude/longitude) or when a 2D density/intensity view is useful. Provide xAxis as longitude, yAxis as latitude, and zAxis as the intensity measure.
+For each insight, provide a chartSpec object that MUST include "mode": "recipe" as a field. Example:
+  "chartSpec": { "mode": "recipe", "chartType": "bar", "xAxis": "category", "yAxis": "revenue" }
+- chartType can be: bar, line, pie, scatter, or heatmap.
+  - Use "heatmap" when the data has geographic coordinates (latitude/longitude). Provide xAxis as longitude, yAxis as latitude, and zAxis as the intensity measure.
   - Use "scatter" for correlation between two measures.
   - Use "bar" for categorical comparisons.
   - Use "line" for trends over time.
   - Use "pie" for share/proportion.
-- A dataProfile specifying rowCount and column definitions. Each column must use one of these generators:
-  - "category": provide categories array (e.g. ["Electronics", "Clothing", "Home"])
-  - "normal": provide mean and stddev, optional min/max
-  - "uniform": provide min and max
-  - "linear": provide start, end, and step (use for time-like axes or sequential IDs)
-  - "constant": provide value
+- xAxis and yAxis must be column name strings from the schema.
+- zAxis is optional, only for heatmap intensity values.
+
+Provide a dataProfile with rowCount and columns. Each column must have a "generator" field:
+  - "category": include "categories" array (e.g. ["Electronics", "Clothing", "Home"])
+  - "normal": include "mean" and "stddev", optionally "min" and "max"
+  - "uniform": include "min" and "max"
+  - "linear": include "start", "end", and "step"
+  - "constant": include "value"
   For geographic coordinates, use "uniform" with min/max for latitude (-90 to 90) and longitude (-180 to 180).
-Column names in dataProfile must match the chartSpec xAxis, yAxis, and zAxis values.
-Do not include extra fields in column specs beyond what each generator needs.
-Use the field semanticType and sampleValues from the schema to make realistic choices.
+Column names in dataProfile must match chartSpec xAxis/yAxis/zAxis values.
+Do not include fields in column specs beyond what each generator needs.
+Use the field semanticType and sampleValues to make realistic choices.
 Return practical, visually interesting ideas with concise reasoning.`
 
 const createModel = (config: LLMProviderConfig) => {
