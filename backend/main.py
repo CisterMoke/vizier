@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models import infer_model, parse_model_id
+from pydantic_ai.models import infer_model
 from pydantic_ai.providers import infer_provider_class
 
 sys.path.append(str(Path(__file__).parents[1]))
@@ -113,7 +113,9 @@ async def rate_limit_middleware(request: Request, call_next):
 
 MAP_SCHEMA_PROMPT = """You are a data schema analyzer. Given free-form text (SQL DDL, CSV headers, JSON, OpenAPI spec, scraped HTML, or any data description), extract a flat list of fields with their types and semantics.
 
-For each field, infer:
+For each field, provide:
+- name: a human-friendly field name (e.g. "County" or "Geocoded Column Longitude")
+- jsonPath: a JSONPath expression to access this field in a data record. For top-level fields: "$.field_name". For nested fields: "$.parent.child" (e.g. "$.geocoded_column.longitude")
 - type: string, number, boolean, date, or datetime
 - semanticType: identifier (primary key), measure (numeric metric), dimension (categorical label), timestamp, currency, percentage, count, text, latitude (lat/geo lat), longitude (lng/geo lon), or geohash
 - sampleValues: 3-5 representative values if they can be inferred from the input
@@ -123,19 +125,54 @@ For each field, infer:
 Set the source to a short description of where the data comes from.
 Include warnings for any fields you are uncertain about."""
 
-INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and sample values, generate creative analytics hypotheses suitable for a hackathon demo.
+INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and jsonPath values, generate creative analytics hypotheses suitable for a hackathon demo.
 
-For each insight, provide a chartSpec object that MUST include "mode": "recipe" as a field. Example:
-  "chartSpec": { "mode": "recipe", "chartType": "bar", "xAxis": "category", "yAxis": "revenue" }
-- chartType can be: bar, line, pie, scatter, heatmap, or geomap.
-  - Use "geomap" when the data has geographic coordinates (latitude/longitude fields). Provide xAxis as the longitude column, yAxis as the latitude column, and optionally zAxis as the intensity/value column.
-  - Use "heatmap" for 2D density/intensity views.
-  - Use "scatter" for correlation between two measures.
-  - Use "bar" for categorical comparisons.
-  - Use "line" for trends over time.
-  - Use "pie" for share/proportion.
-- xAxis and yAxis must be column name strings from the schema.
-- zAxis is optional, for heatmap intensity or geomap point coloring.
+For each insight, provide a chartSpec object that MUST include "mode": "recipe".
+
+SINGLE-TRACE CHARTS (simple):
+  "chartSpec": { "mode": "recipe", "chartType": "bar", "xAxis": "$.category", "yAxis": "$.revenue" }
+  - xAxis and yAxis must be jsonPath strings from the schema fields.
+  - chartType can be: bar, line, pie, scatter, heatmap, or geomap.
+    - Use "geomap" when the data has geographic coordinates (latitude/longitude fields). Provide xAxis as the longitude jsonPath, yAxis as the latitude jsonPath, and optionally zAxis as the intensity/value jsonPath.
+    - Use "heatmap" for 2D density/intensity views.
+    - Use "scatter" for correlation between two measures.
+    - Use "bar" for categorical comparisons.
+    - Use "line" for trends over time.
+    - Use "pie" for share/proportion.
+  - zAxis is optional, for heatmap intensity or geomap point coloring.
+
+MULTI-TRACE CHARTS (overlays, dual-axis):
+  For overlay plots (e.g. a line chart on top of a bar chart), use a "traces" array:
+  "chartSpec": {
+    "mode": "recipe",
+    "traces": [
+      {
+        "chartType": "bar",
+        "xAxis": "$.county",
+        "yAxis": "$.dol_vehicle_id",
+        "transform": { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "count", "target": "y"}] },
+        "name": "EV Count"
+      },
+      {
+        "chartType": "line",
+        "xAxis": "$.county",
+        "yAxis": "$.electric_range",
+        "transform": { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "mean", "target": "y"}] },
+        "yaxis2": "y2",
+        "name": "Avg Range"
+      }
+    ]
+  }
+  - Each trace has its own chartType, xAxis, yAxis (jsonPath strings).
+  - transform: optional Plotly aggregate transform. Use { "type": "aggregate", "groups": "<xAxis jsonPath>", "aggregations": [{"func": "sum|mean|count|min|max|median", "target": "y"}] }.
+  - yaxis2: set to "y2" to use a secondary y-axis (for overlays with different scales).
+  - name: trace name for the legend.
+
+AGGREGATION:
+  When you want to aggregate Y values by X (e.g. sum of revenue by category, count of vehicles by county, average range by make), ALWAYS include a transform on the trace. Common patterns:
+  - Count: { "type": "aggregate", "groups": "$.county", "aggregations": [{"func": "count", "target": "y"}] }
+  - Sum: { "type": "aggregate", "groups": "$.category", "aggregations": [{"func": "sum", "target": "y"}] }
+  - Mean: { "type": "aggregate", "groups": "$.make", "aggregations": [{"func": "mean", "target": "y"}] }
 
 Provide a dataProfile with rowCount and columns. Each column must have a "generator" field:
   - "category": include "categories" array
@@ -143,15 +180,14 @@ Provide a dataProfile with rowCount and columns. Each column must have a "genera
   - "uniform": include "min" and "max"
   - "linear": include "start", "end", and "step"
   - "constant": include "value"
-Column names in dataProfile must match chartSpec xAxis/yAxis/zAxis values.
+Column names in dataProfile must be jsonPath strings matching the chartSpec xAxis/yAxis/zAxis values.
 Return practical, visually interesting ideas with concise reasoning."""
-
-FIELD_MAPPING_PROMPT = """You are a field mapping assistant. Given a list of insights with their chart axis column names (from mock data profiles) and a list of real data column names, map each insight's axis columns to the best matching real column. Return a mappings array where each entry has insightId and a mappings object mapping axis names to real column names."""
 
 # --- Pydantic output models ---
 
 class DatasetField(BaseModel):
     name: str = ""
+    jsonPath: str = ""
     type: str = "string"
     nullable: bool = False
     semanticType: str | None = None
@@ -166,12 +202,34 @@ class DatasetSchema(BaseModel):
     warnings: list[str] = []
 
 
+class PlotlyAggregation(BaseModel):
+    func: str = "count"
+    target: str = "y"
+
+
+class PlotlyTransform(BaseModel):
+    type: str = "aggregate"
+    groups: str = ""
+    aggregations: list[PlotlyAggregation] = []
+
+
+class TraceSpec(BaseModel):
+    chartType: str = "bar"
+    xAxis: str = ""
+    yAxis: str = ""
+    zAxis: str | None = None
+    transform: PlotlyTransform | None = None
+    yaxis2: str | None = None
+    name: str | None = None
+
+
 class ChartSpec(BaseModel):
     mode: str = "recipe"
     chartType: str | None = None
     xAxis: str | None = None
     yAxis: str | None = None
     zAxis: str | None = None
+    traces: list[TraceSpec] | None = None
     plotlyData: list[Any] | None = None
     plotlyLayout: dict[str, Any] | None = None
 
@@ -210,10 +268,6 @@ class InsightCandidate(BaseModel):
 
 class InsightEnvelope(BaseModel):
     insights: list[InsightCandidate]
-
-
-class FieldMappingResult(BaseModel):
-    mappings: list[dict[str, Any]]
 
 
 # --- Request model (for JSON requests without file upload) ---
@@ -291,7 +345,7 @@ async def _run_pipeline(
     schema_text: str,
     real_data: dict | None = None,
 ) -> dict:
-    """Run the full LLM pipeline: schema mapping → insights → field mapping."""
+    """Run the LLM pipeline: schema mapping → insights (2 calls, no field mapping)."""
     # 1. Map schema
     schema = await call_llm(
         MAP_SCHEMA_PROMPT,
@@ -307,41 +361,16 @@ async def _run_pipeline(
         retry_prompt=(
             f"Generate 5 analytics insights for this schema. Each insight MUST have all fields: "
             f'id, title, summary, confidence (0-1), hypothesis, metricDescription, '
-            f'chartSpec (with mode="recipe", chartType, xAxis, yAxis), '
+            f'chartSpec (with mode="recipe", chartType, xAxis, yAxis as jsonPath strings), '
             f'dataProfile (with rowCount and columns, each column needs name and generator), '
             f'and assumptions (array of strings).\n\nSchema: {json.dumps(schema)}'
         ),
     )
 
-    # 3. Map fields if we have real data
-    field_mappings: list = []
-    if real_data and real_data.get("rowCount", 0) > 0:
-        insight_axes = [
-            {
-                "insightId": ins.get("id", ""),
-                "chartType": ins.get("chartSpec", {}).get("chartType") if ins.get("chartSpec") else None,
-                "xAxis": ins.get("chartSpec", {}).get("xAxis") if ins.get("chartSpec") else None,
-                "yAxis": ins.get("chartSpec", {}).get("yAxis") if ins.get("chartSpec") else None,
-                "zAxis": ins.get("chartSpec", {}).get("zAxis") if ins.get("chartSpec") else None,
-            }
-            for ins in insights.get("insights", [])
-        ]
-
-        mapping_result = await call_llm(
-            FIELD_MAPPING_PROMPT,
-            f"Insights with their chart axes:\n{json.dumps(insight_axes)}\n\n"
-            f"Available real data columns:\n{json.dumps(real_data['columns'])}\n\n"
-            f"For each insight, map xAxis, yAxis, and zAxis to the most appropriate real column name. "
-            f'Return {{ "mappings": [{{ "insightId": "...", "mappings": {{ "xAxis": "col", "yAxis": "col" }} }}] }}.',
-            FieldMappingResult,
-        )
-        field_mappings = mapping_result.get("mappings", [])
-
     return {
         "schema": schema,
         "insights": insights,
         "realData": real_data,
-        "fieldMappings": field_mappings,
     }
 
 
