@@ -18,6 +18,7 @@ const semanticTypeSchema = z.enum([
 
 export const datasetFieldSchema = z.object({
   name: z.string(),
+  jsonPath: z.string().optional(),
   type: fieldTypeSchema,
   nullable: z.boolean(),
   semanticType: semanticTypeSchema.optional(),

@@ -15,6 +15,7 @@ export type SemanticType =
 
 export interface DatasetField {
   name: string
+  jsonPath?: string
   type: FieldType
   nullable: boolean
   semanticType?: SemanticType
