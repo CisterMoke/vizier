@@ -5,24 +5,16 @@ vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
 }))
 
-const mapSchemaMock = vi.fn()
-const generateInsightsMock = vi.fn()
-const mapFieldsMock = vi.fn()
+const callGenerateMock = vi.fn()
 
-vi.mock('./services/llmProvider', () => ({
-  createLLMProvider: () => ({
-    mapSchema: mapSchemaMock,
-    generateInsights: generateInsightsMock,
-    mapFields: mapFieldsMock
-  })
+vi.mock('./services/apiClient', () => ({
+  callGenerate: (...args: unknown[]) => callGenerateMock(...args)
 }))
 
 import { App } from './app'
 
 beforeEach(() => {
-  mapSchemaMock.mockReset()
-  generateInsightsMock.mockReset()
-  mapFieldsMock.mockReset()
+  callGenerateMock.mockReset()
 })
 
 const renderApp = () => render(<MantineProvider><App /></MantineProvider>)
@@ -34,40 +26,43 @@ it('renders analytics idea lab shell', () => {
   expect(screen.getByRole('button', { name: /generate analytics/i })).toBeInTheDocument()
 })
 
-it('chains schema mapping and insight generation in a single click', async () => {
-  mapSchemaMock.mockResolvedValue({
-    source: 'SQL: orders table',
-    fields: [
-      { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
-      { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
+it('calls backend API on generate and renders chart cards', async () => {
+  callGenerateMock.mockResolvedValue({
+    schema: {
+      source: 'SQL: orders table',
+      fields: [
+        { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
+        { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
+      ],
+      warnings: []
+    },
+    insights: [
+      {
+        id: 'insight-1',
+        title: 'Orders trend',
+        summary: 'Orders over time',
+        confidence: 0.82,
+        hypothesis: 'Orders climb weekly',
+        metricDescription: 'Weekly order count',
+        chartSpec: {
+          mode: 'recipe',
+          chartType: 'line',
+          xAxis: 'week',
+          yAxis: 'order_count'
+        },
+        dataProfile: {
+          rowCount: 12,
+          columns: [
+            { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
+            { name: 'order_count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
+          ]
+        },
+        assumptions: ['created_at is present']
+      }
     ],
-    warnings: []
+    realData: null,
+    fieldMappings: []
   })
-
-  generateInsightsMock.mockResolvedValue([
-    {
-      id: 'insight-1',
-      title: 'Orders trend',
-      summary: 'Orders over time',
-      confidence: 0.82,
-      hypothesis: 'Orders climb weekly',
-      metricDescription: 'Weekly order count',
-      chartSpec: {
-        mode: 'recipe',
-        chartType: 'line',
-        xAxis: 'week',
-        yAxis: 'order_count'
-      },
-      dataProfile: {
-        rowCount: 12,
-        columns: [
-          { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
-          { name: 'order_count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
-        ]
-      },
-      assumptions: ['created_at is present']
-    }
-  ])
 
   renderApp()
 
@@ -77,8 +72,7 @@ it('chains schema mapping and insight generation in a single click', async () =>
 
   fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
 
-  await waitFor(() => expect(mapSchemaMock).toHaveBeenCalled(), { timeout: 10000 })
-  await waitFor(() => expect(generateInsightsMock).toHaveBeenCalled(), { timeout: 10000 })
+  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
 
   expect(await screen.findByRole('heading', { name: /insight candidates/i })).toBeInTheDocument()
   expect(screen.getAllByTestId('chart-card')).toHaveLength(1)

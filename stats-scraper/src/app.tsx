@@ -1,99 +1,62 @@
 import { useRef, useState } from 'preact/hooks'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { ChartCarousel } from './components/ChartCarousel'
-import { InsightControls } from './components/InsightControls'
-import { SchemaInputPanel } from './components/SchemaInputPanel'
+import { DataInputPanel } from './components/DataInputPanel'
+import type { GenerateRequest } from './components/DataInputPanel'
 import { downloadExportReport } from './lib/exportReport'
-import { generateInsightCandidates } from './services/insightGeneration'
-import { createLLMProvider } from './services/llmProvider'
-import type { ProviderId } from './services/llmProvider'
+import { callGenerate } from './services/apiClient'
 import { generateMockDataset } from './services/mockData'
-import { parseRawData, buildDatasetFromRaw } from './services/dataIngest'
-import type { RawDataResult } from './domain/types'
+import { buildDatasetFromRaw } from './services/dataIngest'
+import type { RawDataResult, InsightCandidate, GeneratedDataset } from './domain/types'
 import { useWorkspaceStore } from './store/workspaceStore'
-
-const API_KEY_REQUIRED_MESSAGE = 'Provide an API key to generate analytics.'
-
-const envApiKey = (import.meta.env.VITE_LLM_API_KEY as string) || ''
-const envProvider = ((import.meta.env.VITE_LLM_PROVIDER as string) || 'google') as ProviderId
-const envModel = (import.meta.env.VITE_LLM_MODEL as string) || (envProvider === 'google' ? 'gemini-2.0-flash' : 'mistral-large-latest')
 
 export function App() {
   const workspace = useWorkspaceStore()
-  const [apiKey, setApiKey] = useState(envApiKey)
-  const [provider, setProvider] = useState<ProviderId>(envProvider)
-  const [model, setModel] = useState(envModel)
   const [isGenerating, setIsGenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [hasRealData, setHasRealData] = useState(false)
   const regenerateCounters = useRef<Record<string, number>>({})
 
-  const handleGenerate = async (rawText: string, rawDataText?: string) => {
-    workspace.setRawSchema(rawText)
+  const handleGenerate = async (request: GenerateRequest) => {
+    workspace.setRawSchema(request.schemaText)
     workspace.setInsights([])
     workspace.setDatasetSchema({ source: '', fields: [], warnings: [] })
     setGenerationError(null)
     setStatusMessage(null)
     setHasRealData(false)
 
-    if (apiKey.trim().length === 0) {
-      setGenerationError(API_KEY_REQUIRED_MESSAGE)
-      return
-    }
-
     setIsGenerating(true)
 
     try {
-      const llm = createLLMProvider({ apiKey, provider, model })
+      setStatusMessage('Analyzing data and generating insights...')
+      const result = await callGenerate(request)
 
-      setStatusMessage('Mapping data schema...')
-      const schema = await llm.mapSchema(rawText)
-      workspace.setDatasetSchema(schema)
+      workspace.setDatasetSchema(result.schema)
 
-      setStatusMessage('Generating analytics insights...')
-      const nextInsights = await generateInsightCandidates(schema, llm)
+      const insights = result.insights
+      workspace.setInsights(insights)
 
-      workspace.setInsights(nextInsights)
-
-      let parsedRawData: RawDataResult | null = null
-
-      if (rawDataText && rawDataText.trim().length > 0) {
-        setStatusMessage('Parsing real data...')
-        parsedRawData = parseRawData(rawDataText)
-
-        if (parsedRawData.format === 'unknown' || parsedRawData.rowCount === 0) {
-          setStatusMessage('Could not parse real data, using mock data instead...')
-          parsedRawData = null
-        } else {
-          setStatusMessage('Mapping real data fields to charts...')
-          const mappingResult = await llm.mapFields(nextInsights, parsedRawData.columns)
-
-          nextInsights.forEach((insight) => {
-            const mapping = mappingResult.mappings.find((m) => m.insightId === insight.id)
-            const mappedDataset = applyFieldMapping(insight, parsedRawData!, mapping?.mappings ?? {})
-            workspace.attachDataset(insight.id, mappedDataset)
-          })
-
-          setHasRealData(true)
-          setStatusMessage(null)
-          return
-        }
+      if (result.realData && result.realData.rowCount > 0) {
+        insights.forEach((insight) => {
+          const mapping = result.fieldMappings.find((m) => m.insightId === insight.id)
+          const dataset = applyFieldMapping(insight, result.realData!, mapping?.mappings ?? {})
+          workspace.attachDataset(insight.id, dataset)
+        })
+        setHasRealData(true)
+      } else {
+        insights.forEach((insight, index) => {
+          workspace.attachDataset(
+            insight.id,
+            generateMockDataset(result.schema, insight, { seed: workspace.demoSeed + index })
+          )
+        })
       }
-
-      nextInsights.forEach((insight, index) => {
-        workspace.attachDataset(
-          insight.id,
-          generateMockDataset(schema, insight, { seed: workspace.demoSeed + index })
-        )
-      })
 
       setStatusMessage(null)
     } catch (error) {
       setGenerationError(
-        error instanceof Error
-          ? `${error.message}`
-          : 'Failed to generate analytics.'
+        error instanceof Error ? error.message : 'Failed to generate analytics.'
       )
     } finally {
       setIsGenerating(false)
@@ -102,14 +65,14 @@ export function App() {
   }
 
   const applyFieldMapping = (
-    insight: import('./domain/types').InsightCandidate,
+    insight: InsightCandidate,
     rawData: RawDataResult,
     mappings: Record<string, string>
-  ): import('./domain/types').GeneratedDataset => {
+  ): GeneratedDataset => {
     const baseDataset = buildDatasetFromRaw(insight.id, rawData)
+    const spec = insight.chartSpec
 
     if (Object.keys(mappings).length === 0) {
-      const spec = insight.chartSpec
       return {
         ...baseDataset,
         rows: rawData.rows.map((row) => ({
@@ -121,7 +84,6 @@ export function App() {
       }
     }
 
-    const spec = insight.chartSpec
     const xKey = mappings.xAxis ?? spec.xAxis ?? rawData.columns[0] ?? ''
     const yKey = mappings.yAxis ?? spec.yAxis ?? rawData.columns[1] ?? ''
     const zKey = spec.zAxis ? (mappings.zAxis ?? rawData.columns[2] ?? '') : undefined
@@ -140,16 +102,12 @@ export function App() {
   }
 
   const handleRegenerateCard = (insightId: string) => {
+    if (hasRealData) return
+
     const insight = workspace.insights.find((item) => item.id === insightId)
     const insightIndex = workspace.insights.findIndex((item) => item.id === insightId)
 
-    if (!insight || insightIndex < 0) {
-      return
-    }
-
-    if (hasRealData) {
-      return
-    }
+    if (!insight || insightIndex < 0) return
 
     regenerateCounters.current[insightId] = (regenerateCounters.current[insightId] ?? 0) + 1
     const regenCount = regenerateCounters.current[insightId]
@@ -184,7 +142,7 @@ export function App() {
                 </Badge>
                 <Title order={1}>Analytics Idea Lab</Title>
                 <Text c="dimmed" mt={6}>
-                  Map any data source into a dataset schema, generate hypotheses, and visualize mock analytics instantly.
+                  Map any data source into a dataset schema, generate hypotheses, and visualize analytics instantly.
                 </Text>
               </div>
               <Button
@@ -198,15 +156,6 @@ export function App() {
             </Group>
           </Paper>
 
-          <InsightControls
-            apiKey={apiKey}
-            onApiKeyChange={setApiKey}
-            provider={provider}
-            onProviderChange={setProvider}
-            model={model}
-            onModelChange={setModel}
-          />
-
           {generationError ? (
             <Alert role="alert" color="orange">
               {generationError}
@@ -219,7 +168,7 @@ export function App() {
             </Alert>
           ) : null}
 
-          <SchemaInputPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
+          <DataInputPanel onGenerate={handleGenerate} isGenerating={isGenerating} />
 
           {hasRealData ? (
             <Text c="green" size="sm" fw={500}>

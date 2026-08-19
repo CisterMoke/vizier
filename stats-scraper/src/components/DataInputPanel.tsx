@@ -1,0 +1,201 @@
+import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Title, Group } from '@mantine/core'
+import { useState } from 'preact/hooks'
+
+export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
+export type FileFormat = 'csv' | 'json' | 'jsonl'
+
+export interface RestApiConfig {
+  method: string
+  url: string
+  headers: string
+  body: string
+}
+
+export interface SqlConfig {
+  connectionString: string
+  query: string
+}
+
+export interface GenerateRequest {
+  schemaText: string
+  dataSource: {
+    mode: DataSourceMode
+    fileContent?: string
+    fileFormat?: FileFormat
+    rest?: RestApiConfig
+    sql?: SqlConfig
+  }
+}
+
+interface DataInputPanelProps {
+  onGenerate: (request: GenerateRequest) => Promise<void>
+  isGenerating: boolean
+}
+
+export function DataInputPanel({ onGenerate, isGenerating }: DataInputPanelProps) {
+  const [schemaText, setSchemaText] = useState('')
+  const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
+  const [fileContent, setFileContent] = useState<string | undefined>(undefined)
+  const [fileFormat, setFileFormat] = useState<FileFormat>('csv')
+  const [fileName, setFileName] = useState<string | undefined>(undefined)
+  const [restConfig, setRestConfig] = useState<RestApiConfig>({ method: 'GET', url: '', headers: '', body: '' })
+  const [sqlConfig, setSqlConfig] = useState<SqlConfig>({ connectionString: '', query: '' })
+
+  const handleFileUpload = (file: File | null) => {
+    if (!file) {
+      setFileContent(undefined)
+      setFileName(undefined)
+      return
+    }
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      setFileContent(reader.result as string)
+    }
+    reader.readAsText(file)
+  }
+
+  const handleSubmit = async (event: Event) => {
+    event.preventDefault()
+    if (schemaText.trim().length === 0) return
+
+    await onGenerate({
+      schemaText,
+      dataSource: {
+        mode: dataSourceMode,
+        fileContent,
+        fileFormat,
+        rest: dataSourceMode === 'rest' ? restConfig : undefined,
+        sql: dataSourceMode === 'sql' ? sqlConfig : undefined
+      }
+    })
+  }
+
+  return (
+    <Paper withBorder radius="lg" p="lg" className="bg-gray-900/50 backdrop-blur-sm shadow-sm border-gray-700/50">
+      <Stack gap="md">
+        <div>
+          <Title order={3}>Data Input</Title>
+          <Text c="dimmed" size="sm">
+            Paste a data description and optionally connect real data to visualize analytics instantly.
+          </Text>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <Stack gap="md">
+            <Textarea
+              label="Data description"
+              id="schema-input"
+              minRows={4}
+              autosize
+              placeholder="e.g. orders(id int, customer_id int, total decimal, status varchar, created_at timestamp)"
+              value={schemaText}
+              onInput={(event) => setSchemaText((event.target as HTMLTextAreaElement).value)}
+            />
+
+            <Select
+              label="Real data source"
+              data={[
+                { value: 'none', label: 'None (use mock data)' },
+                { value: 'file', label: 'File upload' },
+                { value: 'rest', label: 'REST API' },
+                { value: 'sql', label: 'SQL query' }
+              ]}
+              value={dataSourceMode}
+              onChange={(value) => setDataSourceMode((value as DataSourceMode) ?? 'none')}
+            />
+
+            {dataSourceMode === 'file' ? (
+              <Stack gap="sm">
+                <Group gap="md" align="flex-end">
+                  <FileInput
+                    label="Upload data file"
+                    placeholder="Choose file"
+                    value={fileName ? new File([], fileName) : null}
+                    onChange={handleFileUpload}
+                    accept=".csv,.json,.jsonl,.txt"
+                    style={{ flex: 1 }}
+                  />
+                  <Select
+                    label="Format"
+                    data={[
+                      { value: 'csv', label: 'CSV' },
+                      { value: 'json', label: 'JSON array' },
+                      { value: 'jsonl', label: 'JSONL' }
+                    ]}
+                    value={fileFormat}
+                    onChange={(value) => setFileFormat((value as FileFormat) ?? 'csv')}
+                    w={140}
+                  />
+                </Group>
+                {fileName ? (
+                  <Text c="green" size="sm">Loaded: {fileName}</Text>
+                ) : null}
+              </Stack>
+            ) : null}
+
+            {dataSourceMode === 'rest' ? (
+              <Stack gap="sm">
+                <Group gap="md">
+                  <Select
+                    label="Method"
+                    data={['GET', 'POST', 'PUT', 'PATCH', 'DELETE']}
+                    value={restConfig.method}
+                    onChange={(value) => setRestConfig((c) => ({ ...c, method: value ?? 'GET' }))}
+                    w={120}
+                  />
+                  <TextInput
+                    label="URL"
+                    placeholder="https://api.example.com/data"
+                    style={{ flex: 1 }}
+                    value={restConfig.url}
+                    onInput={(event) => setRestConfig((c) => ({ ...c, url: (event.target as HTMLInputElement).value }))}
+                  />
+                </Group>
+                <Textarea
+                  label="Headers (JSON)"
+                  placeholder='{"Authorization": "Bearer ..."}'
+                  minRows={2}
+                  autosize
+                  value={restConfig.headers}
+                  onInput={(event) => setRestConfig((c) => ({ ...c, headers: (event.target as HTMLTextAreaElement).value }))}
+                />
+                <Textarea
+                  label="Body"
+                  placeholder='{"query": "..."}'
+                  minRows={2}
+                  autosize
+                  value={restConfig.body}
+                  onInput={(event) => setRestConfig((c) => ({ ...c, body: (event.target as HTMLTextAreaElement).value }))}
+                />
+              </Stack>
+            ) : null}
+
+            {dataSourceMode === 'sql' ? (
+              <Stack gap="sm">
+                <TextInput
+                  label="Connection string"
+                  placeholder="postgresql://user:pass@host:5432/dbname"
+                  value={sqlConfig.connectionString}
+                  onInput={(event) => setSqlConfig((c) => ({ ...c, connectionString: (event.target as HTMLInputElement).value }))}
+                />
+                <Textarea
+                  label="SQL query"
+                  placeholder="SELECT * FROM orders LIMIT 100"
+                  minRows={3}
+                  autosize
+                  value={sqlConfig.query}
+                  onInput={(event) => setSqlConfig((c) => ({ ...c, query: (event.target as HTMLTextAreaElement).value }))}
+                />
+              </Stack>
+            ) : null}
+
+            <Button type="submit" loading={isGenerating} disabled={isGenerating}>
+              {isGenerating ? 'Analyzing & generating...' : 'Generate analytics'}
+            </Button>
+          </Stack>
+        </form>
+      </Stack>
+    </Paper>
+  )
+}
