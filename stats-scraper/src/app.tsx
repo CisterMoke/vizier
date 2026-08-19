@@ -1,5 +1,5 @@
+import { useRef, useState } from 'preact/hooks'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
-import { useState } from 'preact/hooks'
 import { ChartGrid } from './components/ChartGrid'
 import { InsightControls } from './components/InsightControls'
 import { SchemaInputPanel } from './components/SchemaInputPanel'
@@ -26,6 +26,7 @@ export function App() {
   const [isMapping, setIsMapping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const regenerateCounters = useRef<Record<string, number>>({})
 
   const buildFallbackDatasets = (fallbackInsights = FALLBACK_INSIGHTS) => {
     fallbackInsights.forEach((insight, index) => {
@@ -108,9 +109,14 @@ export function App() {
       return
     }
 
+    regenerateCounters.current[insightId] = (regenerateCounters.current[insightId] ?? 0) + 1
+    const regenCount = regenerateCounters.current[insightId]
+
     workspace.attachDataset(
       insightId,
-      generateMockDataset(workspace.datasetSchema, insight, { seed: workspace.demoSeed + insightIndex + 1000 })
+      generateMockDataset(workspace.datasetSchema, insight, {
+        seed: workspace.demoSeed + insightIndex + 1000 + regenCount * 7919
+      })
     )
   }
 

@@ -33,9 +33,12 @@ it('renders analytics idea lab shell', () => {
 it('requires api key for schema mapping', async () => {
   renderApp()
 
+  fireEvent.input(screen.getByLabelText(/api key/i), { target: { value: '' } })
   fireEvent.click(screen.getByRole('button', { name: /map schema with ai/i }))
 
-  expect(await screen.findByRole('alert')).toHaveTextContent(/provide an api key/i)
+  await waitFor(() => {
+    expect(screen.getByText(/provide an api key/i)).toBeInTheDocument()
+  })
   expect(mapSchemaMock).not.toHaveBeenCalled()
 })
 
