@@ -11,15 +11,14 @@ it('parses CSV data with headers and numeric conversion', () => {
   expect(result.rows[1]).toEqual({ name: 'Bob', age: 25, score: 87.3 })
 })
 
-it('parses JSON array with nested objects flattened', () => {
+it('parses JSON array preserving nested objects', () => {
   const result = parseRawData('[{"id":1,"info":{"name":"Alice","city":"NYC"}},{"id":2,"info":{"name":"Bob","city":"LA"}}]')
 
   expect(result.format).toBe('json')
   expect(result.rowCount).toBe(2)
   expect(result.columns).toContain('id')
-  expect(result.columns).toContain('info.name')
-  expect(result.columns).toContain('info.city')
-  expect(result.rows[0]['info.name']).toBe('Alice')
+  expect(result.rows[0].info).toEqual({ name: 'Alice', city: 'NYC' })
+  expect(result.rows[0].info.name).toBe('Alice')
 })
 
 it('parses JSONL data with one JSON object per line', () => {

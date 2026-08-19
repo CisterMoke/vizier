@@ -68,23 +68,15 @@ const parseJSON = (text: string): RawDataResult => {
     return { format: 'json', columns: [], rows: [], rowCount: 0 }
   }
 
-  const flatten = (obj: Record<string, unknown>, prefix = ''): Record<string, unknown> => {
-    const result: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(obj)) {
-      const fullKey = prefix ? `${prefix}.${key}` : key
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        Object.assign(result, flatten(value as Record<string, unknown>, fullKey))
-      } else {
-        result[fullKey] = value
-      }
-    }
-    return result
-  }
+  const rows = arr as Record<string, unknown>[]
+  const columns = [...new Set(rows.flatMap((row) =>
+    Object.keys(row).filter((key) => {
+      const val = row[key]
+      return val !== null && typeof val !== 'object'
+    })
+  ))]
 
-  const flatRows = arr.map((item) => flatten(item as Record<string, unknown>))
-  const columns = [...new Set(flatRows.flatMap((row) => Object.keys(row)))]
-
-  return { format: 'json', columns, rows: flatRows, rowCount: flatRows.length }
+  return { format: 'json', columns, rows, rowCount: rows.length }
 }
 
 const parseJSONL = (text: string): RawDataResult => {

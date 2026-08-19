@@ -28,7 +28,7 @@ def parse_csv(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
 
 
 def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
-    """Parse JSON array (with nested object flattening) using pandas."""
+    """Parse JSON array (preserving nested structure for JSONPath) using pandas."""
     if isinstance(source, Path):
         with open(source, "r") as f:
             parsed = json.load(f)
@@ -41,8 +41,14 @@ def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
     if not arr:
         return {"format": "json", "columns": [], "rows": [], "rowCount": 0}
 
-    df = pd.json_normalize(arr)
-    return _df_to_result(df, "json")
+    records = arr
+    columns = sorted(set(
+        key
+        for item in records
+        for key, value in item.items()
+        if not (isinstance(value, dict) or isinstance(value, list))
+    ))
+    return {"format": "json", "columns": columns, "rows": records, "rowCount": len(records)}
 
 
 def parse_jsonl(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
