@@ -60,8 +60,7 @@ it('calls backend API on generate and renders chart cards', async () => {
         assumptions: ['created_at is present']
       }
     ],
-    realData: null,
-    fieldMappings: []
+    realData: null
   })
 
   renderApp()

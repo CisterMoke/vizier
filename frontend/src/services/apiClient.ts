@@ -6,7 +6,6 @@ export interface GenerateResponse {
   schema: DatasetSchema
   insights: InsightCandidate[]
   realData: RawDataResult | null
-  fieldMappings: { insightId: string; mappings: Record<string, string> }[]
 }
 
 const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000'
@@ -17,8 +16,7 @@ async function parseResponse(response: Response): Promise<GenerateResponse> {
   return {
     schema: parseDatasetSchema(raw.schema),
     insights: parseInsightEnvelope(raw.insights).insights,
-    realData: raw.realData ?? null,
-    fieldMappings: raw.fieldMappings ?? []
+    realData: raw.realData ?? null
   }
 }
 

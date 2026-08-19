@@ -7,7 +7,6 @@ import { downloadExportReport } from './lib/exportReport'
 import { callGenerate } from './services/apiClient'
 import { generateMockDataset } from './services/mockData'
 import { buildDatasetFromRaw } from './services/dataIngest'
-import type { RawDataResult, InsightCandidate, GeneratedDataset } from './domain/types'
 import { useWorkspaceStore } from './store/workspaceStore'
 
 export function App() {
@@ -39,8 +38,7 @@ export function App() {
 
       if (result.realData && result.realData.rowCount > 0) {
         insights.forEach((insight) => {
-          const mapping = result.fieldMappings.find((m) => m.insightId === insight.id)
-          const dataset = applyFieldMapping(insight, result.realData!, mapping?.mappings ?? {})
+          const dataset = buildDatasetFromRaw(insight.id, result.realData!)
           workspace.attachDataset(insight.id, dataset)
         })
         setHasRealData(true)
@@ -61,47 +59,6 @@ export function App() {
     } finally {
       setIsGenerating(false)
       setStatusMessage(null)
-    }
-  }
-
-  const applyFieldMapping = (
-    insight: InsightCandidate,
-    rawData: RawDataResult,
-    mappings: Record<string, string>
-  ): GeneratedDataset => {
-    const baseDataset = buildDatasetFromRaw(insight.id, rawData)
-    const spec = insight.chartSpec
-
-    if (!spec) {
-      return baseDataset
-    }
-
-    if (Object.keys(mappings).length === 0) {
-      return {
-        ...baseDataset,
-        rows: rawData.rows.map((row) => ({
-          [spec.xAxis ?? 'x']: row[rawData.columns[0] ?? ''],
-          [spec.yAxis ?? 'y']: row[rawData.columns[1] ?? ''],
-          ...(spec.zAxis ? { [spec.zAxis]: row[rawData.columns[2] ?? ''] } : {})
-        })),
-        columns: [spec.xAxis ?? 'x', spec.yAxis ?? 'y', ...(spec.zAxis ? [spec.zAxis] : [])].filter(Boolean) as string[]
-      }
-    }
-
-    const xKey = mappings.xAxis ?? spec.xAxis ?? rawData.columns[0] ?? ''
-    const yKey = mappings.yAxis ?? spec.yAxis ?? rawData.columns[1] ?? ''
-    const zKey = spec.zAxis ? (mappings.zAxis ?? rawData.columns[2] ?? '') : undefined
-
-    return {
-      ...baseDataset,
-      rows: rawData.rows.map((row) => {
-        const mapped: Record<string, unknown> = {}
-        if (spec.xAxis) mapped[spec.xAxis] = row[xKey]
-        if (spec.yAxis) mapped[spec.yAxis] = row[yKey]
-        if (zKey && spec.zAxis) mapped[spec.zAxis] = row[zKey]
-        return mapped
-      }),
-      columns: [spec.xAxis, spec.yAxis, spec.zAxis].filter(Boolean) as string[]
     }
   }
 
