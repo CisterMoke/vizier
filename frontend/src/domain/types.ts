@@ -18,9 +18,9 @@ export interface DatasetField {
   type: FieldType
   nullable: boolean
   semanticType?: SemanticType
-  sampleValues?: unknown[]
+  sampleValues?: unknown[] | string
   unique?: boolean
-  group?: string
+  group?: string | null
 }
 
 export interface DatasetSchema {
@@ -36,9 +36,9 @@ export interface ChartSpec {
   chartType?: ChartType
   xAxis?: string
   yAxis?: string
-  zAxis?: string
-  plotlyData?: unknown[]
-  plotlyLayout?: Record<string, unknown>
+  zAxis?: string | null
+  plotlyData?: unknown[] | null
+  plotlyLayout?: Record<string, unknown> | null
 }
 
 export type DataGenerator = 'category' | 'normal' | 'uniform' | 'linear' | 'constant'
@@ -46,15 +46,15 @@ export type DataGenerator = 'category' | 'normal' | 'uniform' | 'linear' | 'cons
 export interface DataColumnSpec {
   name: string
   generator: DataGenerator
-  categories?: string[]
-  min?: number
-  max?: number
-  mean?: number
-  stddev?: number
-  start?: number
-  end?: number
-  step?: number
-  value?: unknown
+  categories?: string[] | null
+  min?: number | null
+  max?: number | null
+  mean?: number | null
+  stddev?: number | null
+  start?: number | null
+  end?: number | null
+  step?: number | null
+  value?: unknown | null
 }
 
 export interface DataProfile {

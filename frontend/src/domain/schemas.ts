@@ -17,13 +17,13 @@ const semanticTypeSchema = z.enum([
 ])
 
 export const datasetFieldSchema = z.object({
-  name: z.string().min(1),
+  name: z.string(),
   type: fieldTypeSchema,
   nullable: z.boolean(),
   semanticType: semanticTypeSchema.optional(),
-  sampleValues: z.array(z.unknown()).optional(),
+  sampleValues: z.union([z.array(z.unknown()), z.string()]).optional(),
   unique: z.boolean().optional(),
-  group: z.string().optional()
+  group: z.string().nullable().optional()
 })
 
 export const datasetSchemaSchema = z.object({
@@ -37,23 +37,23 @@ export const chartSpecSchema = z.object({
   chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']).optional(),
   xAxis: z.string().optional(),
   yAxis: z.string().optional(),
-  zAxis: z.string().optional(),
-  plotlyData: z.array(z.unknown()).optional(),
-  plotlyLayout: z.record(z.string(), z.unknown()).optional()
+  zAxis: z.string().nullable().optional(),
+  plotlyData: z.array(z.unknown()).nullable().optional(),
+  plotlyLayout: z.record(z.string(), z.unknown()).nullable().optional()
 })
 
 const dataColumnSpecSchema = z.object({
-  name: z.string().min(1),
+  name: z.string(),
   generator: z.enum(['category', 'normal', 'uniform', 'linear', 'constant']),
-  categories: z.array(z.string()).optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  mean: z.number().optional(),
-  stddev: z.number().optional(),
-  start: z.number().optional(),
-  end: z.number().optional(),
-  step: z.number().optional(),
-  value: z.unknown().optional()
+  categories: z.array(z.string()).nullable().optional(),
+  min: z.number().nullable().optional(),
+  max: z.number().nullable().optional(),
+  mean: z.number().nullable().optional(),
+  stddev: z.number().nullable().optional(),
+  start: z.number().nullable().optional(),
+  end: z.number().nullable().optional(),
+  step: z.number().nullable().optional(),
+  value: z.unknown().nullable().optional()
 })
 
 export const dataProfileSchema = z.object({

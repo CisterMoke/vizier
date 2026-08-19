@@ -14,10 +14,10 @@ const createSeededRandom = (seed: number): (() => number) => {
   }
 }
 
-const clamp = (value: number, min?: number, max?: number): number => {
+const clamp = (value: number, min?: number | null, max?: number | null): number => {
   let result = value
-  if (min !== undefined && result < min) result = min
-  if (max !== undefined && result > max) result = max
+  if (min != null && result < min) result = min
+  if (max != null && result > max) result = max
   return result
 }
 
