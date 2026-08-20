@@ -17,8 +17,7 @@ const mockBarInsight: InsightCandidate = {
   id: 'ins-1',
   title: 'Revenue by category',
   summary: 'Show revenue by category as a bar chart.',
-  confidence: 0.91,
-  hypothesis: 'Revenue varies by category.',
+  keyIdea: 'Revenue varies by category.',
   metricDescription: 'Sum of revenue grouped by category.',
   chartSpec: {
     mode: 'recipe',

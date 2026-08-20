@@ -15,8 +15,7 @@ const mockInsight: InsightCandidate = {
   id: 'ins-1',
   title: 'Repeat customer rate trend',
   summary: 'Track repeat rate by week.',
-  confidence: 0.9,
-  hypothesis: 'Repeat rate changes week to week.',
+  keyIdea: 'Repeat rate changes week to week.',
   metricDescription: 'Share of repeat customers by week.',
   chartSpec: {
     mode: 'recipe',

@@ -84,8 +84,7 @@ export interface InsightCandidate {
   id: string
   title: string
   summary: string
-  confidence: number
-  hypothesis: string
+  keyIdea: string
   metricDescription: string
   chartSpec: ChartSpec
   dataProfile: DataProfile | null

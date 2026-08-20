@@ -33,10 +33,24 @@ export const datasetSchemaSchema = z.object({
   warnings: z.array(z.string())
 })
 
+const filterValueSchema = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        return JSON.parse(trimmed)
+      } catch {
+        return val
+      }
+    }
+  }
+  return val
+}, z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]))
+
 const traceFilterSchema = z.object({
   field: z.string(),
   op: z.enum(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in']),
-  value: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))])
+  value: filterValueSchema
 })
 
 const traceSpecSchema = z.object({
@@ -79,8 +93,7 @@ export const insightCandidateSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   summary: z.string().min(1),
-  confidence: z.number().min(0).max(1).default(0.5),
-  hypothesis: z.string().min(1),
+  keyIdea: z.string().min(1),
   metricDescription: z.string().default(''),
   chartSpec: chartSpecSchema,
   dataProfile: dataProfileSchema.nullable().default(null),

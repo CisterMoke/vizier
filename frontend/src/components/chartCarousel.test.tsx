@@ -14,8 +14,7 @@ const insights: InsightCandidate[] = [
     id: 'ins-1',
     title: 'Revenue by category',
     summary: 'Show revenue by category as a bar chart.',
-    confidence: 0.88,
-    hypothesis: 'Categories have uneven revenue distribution.',
+    keyIdea: 'Categories have uneven revenue distribution.',
     metricDescription: 'Sum of revenue by category.',
     chartSpec: {
       mode: 'recipe',
@@ -35,8 +34,7 @@ const insights: InsightCandidate[] = [
     id: 'ins-2',
     title: 'Order volume trend',
     summary: 'Weekly order count over time.',
-    confidence: 0.82,
-    hypothesis: 'Order volume shows seasonal patterns.',
+    keyIdea: 'Order volume shows seasonal patterns.',
     metricDescription: 'Weekly order count.',
     chartSpec: {
       mode: 'recipe',

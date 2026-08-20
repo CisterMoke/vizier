@@ -41,8 +41,7 @@ it('calls backend API on generate and renders chart cards', async () => {
         id: 'insight-1',
         title: 'Orders trend',
         summary: 'Orders over time',
-        confidence: 0.82,
-        hypothesis: 'Orders climb weekly',
+        keyIdea: 'Orders climb weekly',
         metricDescription: 'Weekly order count',
       chartSpec: {
         mode: 'recipe',

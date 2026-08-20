@@ -198,7 +198,7 @@ Provide a dataProfile with columns. Each column must have a "generator" field:
   - "linear": include "start", "end", and "step"
   - "constant": include "value"
 Column names in dataProfile must be jsonPath strings matching the chartSpec trace xAxis/yAxis/zAxis values.
-Each insight MUST have a non-empty id, title, summary, and hypothesis. Do not leave any of these fields empty or null.
+Each insight MUST have a non-empty id, title, summary, and keyIdea. Do not leave any of these fields empty or null.
 Return practical, visually interesting ideas with concise reasoning."""
 
 # --- Pydantic output models ---
@@ -266,13 +266,12 @@ class InsightCandidate(BaseModel):
     id: str = ""
     title: str = ""
     summary: str = ""
-    confidence: float = 0.5
-    hypothesis: str = ""
+    keyIdea: str = ""
     metricDescription: str = ""
     chartSpec: ChartSpec = Field(default_factory=ChartSpec)
     dataProfile: DataProfile | None = None
     assumptions: list[str] = []
-    description: str | None = None  # LLM sometimes returns this instead of summary
+    description: str | None = None
 
 
 class InsightEnvelope(BaseModel):
@@ -369,9 +368,9 @@ async def _run_pipeline(
         InsightEnvelope,
         retry_prompt=(
             f"Generate 5 analytics insights for this schema. Each insight MUST have all fields: "
-            f'id, title, summary, confidence (0-1), hypothesis, metricDescription, '
+            f'id, title, summary, keyIdea, metricDescription, '
             f'chartSpec (with mode="recipe" and a traces array, each trace needs chartType, xAxis, yAxis as jsonPath strings, and optional aggregation), '
-            f'dataProfile (with rowCount and columns, each column needs name and generator), '
+            f'dataProfile (with columns, each column needs name and generator), '
             f'and assumptions (array of strings).\n\nSchema: {json.dumps(schema)}'
         ),
     )

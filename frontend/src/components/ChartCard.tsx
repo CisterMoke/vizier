@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Group, List, Stack, Text, Title } from '@mantine/core'
+import { Button, Card, Group, List, Stack, Text, Title } from '@mantine/core'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
 import { buildPlotlySpec } from '../services/chartSpec'
@@ -28,7 +28,6 @@ export function ChartCard({ insight, dataset, onRegenerate, onDelete }: ChartCar
         <div>
           <Group justify="space-between" align="flex-start">
             <Title order={4}>{insight.title}</Title>
-            <Badge variant="light">{Math.round(insight.confidence * 100)}% confidence</Badge>
           </Group>
           <Text c="dimmed" size="sm" mt={4}>
             {insight.summary}
@@ -36,7 +35,7 @@ export function ChartCard({ insight, dataset, onRegenerate, onDelete }: ChartCar
         </div>
 
         <Text size="sm">
-          <strong>Hypothesis:</strong> {insight.hypothesis}
+          <strong>Key idea:</strong> {insight.keyIdea}
         </Text>
         <Text size="sm">
           <strong>Metric:</strong> {insight.metricDescription}

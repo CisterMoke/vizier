@@ -13,8 +13,7 @@ const payload: ExportPayload = {
       id: 'ins-1',
       title: 'Orders over time',
       summary: 'Order counts by day.',
-      confidence: 0.81,
-      hypothesis: 'Daily order counts are increasing.',
+      keyIdea: 'Daily order counts are increasing.',
       metricDescription: 'Daily order count.',
       chartSpec: {
         mode: 'recipe',

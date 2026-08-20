@@ -46,8 +46,7 @@ it('parses an insight with traces array and aggregation', () => {
         id: 'ins-1',
         title: 'EV Count + Avg Range',
         summary: 'Bar chart with line overlay',
-        confidence: 0.9,
-        hypothesis: 'Urban counties have more EVs',
+        keyIdea: 'Urban counties have more EVs',
         metricDescription: 'Count and avg range by county',
         chartSpec: {
           mode: 'recipe',
@@ -89,8 +88,7 @@ it('parses an insight with traces and no aggregation', () => {
         id: 'ins-2',
         title: 'Simple bar',
         summary: 'Just a bar chart',
-        confidence: 0.8,
-        hypothesis: 'Revenue varies',
+        keyIdea: 'Revenue varies',
         metricDescription: 'Revenue by category',
         chartSpec: {
           mode: 'recipe',
@@ -117,8 +115,7 @@ it('defaults chartSpec traces to empty array when omitted', () => {
         id: 'ins-3',
         title: 'No traces',
         summary: 'Empty chart spec',
-        confidence: 0.5,
-        hypothesis: 'Test',
+        keyIdea: 'Test',
         metricDescription: 'Test',
         chartSpec: {
           mode: 'recipe'
@@ -131,4 +128,39 @@ it('defaults chartSpec traces to empty array when omitted', () => {
 
   const spec = parsed.insights[0].chartSpec
   expect(spec.traces).toEqual([])
+})
+
+it('parses filter value from JSON-encoded string to array', () => {
+  const parsed = parseInsightEnvelope({
+    insights: [
+      {
+        id: 'ins-filter',
+        title: 'Filtered chart',
+        summary: 'Chart with filter',
+        keyIdea: 'Test filter parsing',
+        metricDescription: 'Test',
+        chartSpec: {
+          mode: 'recipe',
+          traces: [
+            {
+              chartType: 'bar',
+              xAxis: '$.make',
+              yAxis: '$.count',
+              filter: {
+                field: '$.make',
+                op: 'in',
+                value: '["TESLA", "NISSAN", "FORD"]'
+              }
+            }
+          ]
+        },
+        dataProfile: null,
+        assumptions: []
+      }
+    ]
+  })
+
+  const filter = parsed.insights[0].chartSpec.traces[0].filter
+  expect(Array.isArray(filter!.value)).toBe(true)
+  expect(filter!.value).toEqual(['TESLA', 'NISSAN', 'FORD'])
 })

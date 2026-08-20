@@ -1,4 +1,4 @@
-import { Button, Card, Group, Stack, Text, Title, Badge, List } from '@mantine/core'
+import { Button, Card, Group, Stack, Text, Title, List } from '@mantine/core'
 import { useState, useCallback } from 'preact/hooks'
 import type { GeneratedDataset, InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
@@ -69,12 +69,11 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">
             <Title order={4}>{insight.title}</Title>
-            <Badge variant="light">{Math.round(insight.confidence * 100)}% confidence</Badge>
           </Group>
           <Text c="dimmed" size="sm">{insight.summary}</Text>
 
           <Text size="sm">
-            <strong>Hypothesis:</strong> {insight.hypothesis}
+            <strong>Key idea:</strong> {insight.keyIdea}
           </Text>
           <Text size="sm">
             <strong>Metric:</strong> {insight.metricDescription}
