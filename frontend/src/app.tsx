@@ -121,7 +121,7 @@ export function App() {
             <Badge variant="light" color="cyan" mb={8}>
               Hackathon Mode
             </Badge>
-            <Title order={1}>Analytics Idea Lab</Title>
+            <Title order={1}>Vizier AI</Title>
             <Text c="dimmed" mt={6}>
               Map any data source into a dataset schema, generate hypotheses, and visualize analytics instantly.
             </Text>
