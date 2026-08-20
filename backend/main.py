@@ -204,8 +204,8 @@ Return practical, visually interesting ideas with concise reasoning."""
 # --- Pydantic output models ---
 
 class DatasetField(BaseModel):
-    name: str = ""
-    jsonPath: str = ""
+    name: str = Field(min_length=1)
+    jsonPath: str = Field(min_length=1)
     type: str = "string"
     nullable: bool = False
     semanticType: str | None = None
@@ -215,21 +215,21 @@ class DatasetField(BaseModel):
 
 
 class DatasetSchema(BaseModel):
-    source: str
-    fields: list[DatasetField]
+    source: str = Field(min_length=1)
+    fields: list[DatasetField] = Field(min_length=1)
     warnings: list[str] = []
 
 
 class TraceFilter(BaseModel):
-    field: str = ""
+    field: str = Field(min_length=1)
     op: str = "eq"
     value: Any = None
 
 
 class TraceSpec(BaseModel):
-    chartType: str = "bar"
-    xAxis: str = ""
-    yAxis: str = ""
+    chartType: str = Field(min_length=1)
+    xAxis: str = Field(min_length=1)
+    yAxis: str = Field(min_length=1)
     zAxis: str | None = None
     aggregation: str | None = None
     filter: TraceFilter | None = None
@@ -239,13 +239,13 @@ class TraceSpec(BaseModel):
 
 class ChartSpec(BaseModel):
     mode: str = "recipe"
-    traces: list[TraceSpec] = Field(default_factory=lambda: [TraceSpec()])
+    traces: list[TraceSpec] = Field(min_length=1, default_factory=lambda: [TraceSpec()])
     plotlyData: list[Any] | None = None
     plotlyLayout: dict[str, Any] | None = None
 
 
 class DataColumnSpec(BaseModel):
-    name: str = ""
+    name: str = Field(min_length=1)
     generator: str = "uniform"
     categories: list[str] | None = None
     min: float | None = None
@@ -259,14 +259,14 @@ class DataColumnSpec(BaseModel):
 
 
 class DataProfile(BaseModel):
-    columns: list[DataColumnSpec] = []
+    columns: list[DataColumnSpec] = Field(min_length=1, default_factory=list)
 
 
 class InsightCandidate(BaseModel):
-    id: str = ""
-    title: str = ""
-    summary: str = ""
-    keyIdea: str = ""
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=3)
+    summary: str = Field(min_length=3)
+    keyIdea: str = Field(min_length=3)
     metricDescription: str = ""
     chartSpec: ChartSpec = Field(default_factory=ChartSpec)
     dataProfile: DataProfile | None = None
@@ -293,28 +293,51 @@ class GenerateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-async def call_llm(system: str, prompt: str, output_type: type, retry_prompt: str | None = None) -> dict:
+def _validate_insights(insights: dict) -> bool:
+    """Post-validation check: reject insights with empty traces or missing data."""
+    for ins in insights.get("insights", []):
+        spec = ins.get("chartSpec", {})
+        traces = spec.get("traces", [])
+        if not traces:
+            return False
+        for t in traces:
+            if not t.get("xAxis") or not t.get("yAxis") or not t.get("chartType"):
+                return False
+    return True
+
+
+async def call_llm(
+    system: str,
+    prompt: str,
+    output_type: type,
+    retry_prompt: str | None = None,
+    validate_fn=None,
+) -> dict:
     """Call LLM via pydantic-ai with structured output using server-side config.
 
-    Retries once with a simpler prompt if validation fails.
+    Retries up to 2 times with the retry prompt if validation fails or
+    the output is rejected by validate_fn.
     """
     model = infer_model(_LLM_MODEL, lambda s: infer_provider_class(s)(api_key=os.getenv("LLM_API_KEY")))
 
-    try:
-        agent = Agent(model, system_prompt=system, output_type=output_type)
-        result = await agent.run(prompt)
-        return result.output.model_dump(mode="json")
-    except Exception as first_error:
-        print(f"[LLM] First attempt failed: {first_error}", file=sys.stderr)
-        if retry_prompt:
-            print("[LLM] Retrying with simplified prompt...", file=sys.stderr)
-            try:
-                retry_agent = Agent(model, system_prompt=system, output_type=output_type)
-                result = await retry_agent.run(retry_prompt)
-                return result.output.model_dump(mode="json")
-            except Exception as retry_error:
-                print(f"[LLM] Retry also failed: {retry_error}", file=sys.stderr)
-        raise first_error
+    for attempt in range(3):
+        try:
+            use_prompt = prompt if attempt == 0 else (retry_prompt or prompt)
+            agent = Agent(model, system_prompt=system, output_type=output_type)
+            result = await agent.run(use_prompt)
+            output = result.output.model_dump(mode="json")
+
+            if validate_fn and not validate_fn(output):
+                print(f"[LLM] Attempt {attempt + 1} failed validation, retrying...", file=sys.stderr)
+                continue
+
+            return output
+        except Exception as e:
+            print(f"[LLM] Attempt {attempt + 1} failed: {e}", file=sys.stderr)
+            if attempt < 2:
+                print("[LLM] Retrying...", file=sys.stderr)
+            else:
+                raise
 
 
 # --- Data fetching ---
@@ -367,12 +390,15 @@ async def _run_pipeline(
         f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}",
         InsightEnvelope,
         retry_prompt=(
-            f"Generate 5 analytics insights for this schema. Each insight MUST have all fields: "
+            f"Generate 5 analytics insights for this schema. Each insight MUST have all required fields: "
             f'id, title, summary, keyIdea, metricDescription, '
-            f'chartSpec (with mode="recipe" and a traces array, each trace needs chartType, xAxis, yAxis as jsonPath strings, and optional aggregation), '
+            f'chartSpec (with mode="recipe" and a traces array with at least one trace, '
+            f'each trace needs chartType, xAxis, yAxis as jsonPath strings, and optional aggregation), '
             f'dataProfile (with columns, each column needs name and generator), '
-            f'and assumptions (array of strings).\n\nSchema: {json.dumps(schema)}'
+            f'and assumptions (array of strings). '
+            f'Do NOT leave any field empty or null.\n\nSchema: {json.dumps(schema)}'
         ),
+        validate_fn=_validate_insights,
     )
 
     return {

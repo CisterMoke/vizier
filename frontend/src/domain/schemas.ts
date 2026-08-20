@@ -55,8 +55,8 @@ const traceFilterSchema = z.object({
 
 const traceSpecSchema = z.object({
   chartType: z.enum(['bar', 'line', 'pie', 'scatter', 'heatmap', 'geomap']),
-  xAxis: z.string(),
-  yAxis: z.string(),
+  xAxis: z.string().min(1),
+  yAxis: z.string().min(1),
   zAxis: z.string().nullable().optional(),
   aggregation: z.enum(['sum', 'mean', 'count', 'min', 'max', 'median', 'first', 'last']).nullable().optional(),
   filter: traceFilterSchema.nullable().optional(),
