@@ -4,6 +4,8 @@ Turn any data description into interactive analytics dashboards — instantly.
 
 Vizier AI takes a free-form description of your dataset (prose, schema, sample rows, or all three), uses an LLM to generate analytics insights with chart specifications, and renders them as interactive Plotly charts. Optionally connect real data via file upload, REST API, or SQL query to replace mock data with the real thing.
 
+[![Vizier AI Demo](demo-thumb.png)](https://www.youtube.com/watch?v=e7Y6D2jY9oI)
+
 ## What It Does
 
 1. **Schema extraction** — Paste a description of your data (SQL DDL, CSV headers, JSON, OpenAPI spec, or just words). The LLM extracts a structured schema with field types, semantic types, and JSONPath expressions for precise data access.

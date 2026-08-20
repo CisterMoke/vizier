@@ -119,7 +119,7 @@ export function App() {
         <Stack gap="lg">
           <Paper withBorder radius="xl" p="xl" className="bg-gray-900/60 backdrop-blur-md shadow-lg border-gray-700/50">
             <Badge variant="light" color="cyan" mb={8}>
-              Hackathon Mode
+              Pixel Forge AI Hackathon
             </Badge>
             <Title order={1}>Vizier AI</Title>
             <Text c="dimmed" mt={6}>

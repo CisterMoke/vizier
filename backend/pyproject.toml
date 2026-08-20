@@ -1,5 +1,5 @@
 [project]
-name = "stats-scraper-backend"
+name = "vizier-backend"
 version = "0.1.0"
 description = "LLM proxy backend for Analytics Idea Lab"
 requires-python = ">=3.12"
