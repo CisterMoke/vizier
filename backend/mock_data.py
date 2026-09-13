@@ -4,6 +4,7 @@ Generates deterministic mock data from an insight's dataProfile.
 Uses the same Linear Congruential Generator algorithm as the frontend.
 """
 
+import math
 from typing import Any
 
 MOCK_ROW_COUNT = 200
