@@ -1,9 +1,8 @@
-import type { DatasetSchema, InsightCandidate } from '../domain/types'
-import { parseDatasetSchema, parseInsightEnvelope } from '../domain/schemas'
+import type { InsightCandidate } from '../domain/types'
+import { parseInsightEnvelope } from '../domain/schemas'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
-  schema: DatasetSchema | null
   insights: InsightCandidate[]
 }
 
@@ -12,17 +11,7 @@ const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'htt
 async function parseResponse(response: Response): Promise<GenerateResponse> {
   const raw = await response.json()
 
-  let schema: DatasetSchema | null = null
-  if (raw.schema) {
-    schema = parseDatasetSchema(raw.schema)
-    schema.fields = schema.fields.map((field) => ({
-      ...field,
-      jsonPath: field.jsonPath ?? `$.${field.name}`
-    }))
-  }
-
   return {
-    schema,
     insights: parseInsightEnvelope(raw.insights).insights,
   }
 }

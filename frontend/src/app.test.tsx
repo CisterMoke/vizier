@@ -28,14 +28,6 @@ it('renders analytics idea lab shell', () => {
 
 it('calls backend API on generate and renders chart cards', async () => {
   callGenerateMock.mockResolvedValue({
-    schema: {
-      source: 'SQL: orders table',
-      fields: [
-        { name: 'id', jsonPath: '$.id', type: 'number', nullable: false, semanticType: 'identifier' },
-        { name: 'total', jsonPath: '$.total', type: 'number', nullable: false, semanticType: 'currency' }
-      ],
-      warnings: []
-    },
     insights: [
       {
         id: 'insight-1',

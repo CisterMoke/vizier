@@ -438,7 +438,7 @@ async def _run_pipeline(
         validate_fn=_validate_insights,
     )
 
-    # Build Plotly specs for each insight
+    # Build Plotly specs for each insight, then strip backend-internal fields
     insights_list = insights_output.get("insights", [])
     for i, insight in enumerate(insights_list):
         if use_real_data:
@@ -450,8 +450,12 @@ async def _run_pipeline(
         insight["plotlyData"] = plotly_spec["data"]
         insight["plotlyLayout"] = plotly_spec["layout"]
 
+        # Strip backend-internal fields — frontend only needs plotlyData/plotlyLayout
+        insight.pop("chartSpec", None)
+        insight.pop("dataProfile", None)
+        insight.pop("description", None)
+
     return {
-        "schema": schema,
         "insights": {"insights": insights_list},
     }
 

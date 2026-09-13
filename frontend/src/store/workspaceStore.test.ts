@@ -16,7 +16,7 @@ it('workspaceStore exports useWorkspaceStore hook', () => {
   expect(typeof useWorkspaceStore).toBe('function')
 })
 
-it('mockInsight has correct shape for new schema', () => {
+it('mockInsight has correct shape', () => {
   expect(mockInsight.id).toBe('ins-1')
   expect(mockInsight.plotlyData).toEqual([])
   expect(mockInsight.plotlyLayout).toEqual({})

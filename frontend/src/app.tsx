@@ -14,9 +14,7 @@ export function App() {
   const [hasRealData, setHasRealData] = useState(false)
 
   const handleGenerate = async (request: GenerateRequest) => {
-    workspace.setRawSchema(request.schemaText)
     workspace.setInsights([])
-    workspace.setDatasetSchema({ source: '', fields: [], warnings: [] })
     setGenerationError(null)
     setStatusMessage(null)
     setHasRealData(false)
@@ -26,10 +24,6 @@ export function App() {
     try {
       setStatusMessage('Analyzing data and generating insights...')
       const result = await callGenerate(request)
-
-      if (result.schema) {
-        workspace.setDatasetSchema(result.schema)
-      }
 
       workspace.setInsights(result.insights)
       setHasRealData(request.dataSource.mode !== 'none')
