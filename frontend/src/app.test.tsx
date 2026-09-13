@@ -22,7 +22,7 @@ const renderApp = () => render(<MantineProvider><App /></MantineProvider>)
 it('renders analytics idea lab shell', () => {
   renderApp()
 
-  expect(screen.getByRole('heading', { name: /analytics idea lab/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /vizier ai/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /generate analytics/i })).toBeInTheDocument()
 })
 
@@ -31,8 +31,8 @@ it('calls backend API on generate and renders chart cards', async () => {
     schema: {
       source: 'SQL: orders table',
       fields: [
-        { name: 'id', type: 'number', nullable: false, semanticType: 'identifier' },
-        { name: 'total', type: 'number', nullable: false, semanticType: 'currency' }
+        { name: 'id', jsonPath: '$.id', type: 'number', nullable: false, semanticType: 'identifier' },
+        { name: 'total', jsonPath: '$.total', type: 'number', nullable: false, semanticType: 'currency' }
       ],
       warnings: []
     },
@@ -43,22 +43,11 @@ it('calls backend API on generate and renders chart cards', async () => {
         summary: 'Orders over time',
         keyIdea: 'Orders climb weekly',
         metricDescription: 'Weekly order count',
-      chartSpec: {
-        mode: 'recipe',
-        traces: [
-          { chartType: 'line', xAxis: '$.week', yAxis: '$.order_count' }
-        ]
-      },
-      dataProfile: {
-        columns: [
-            { name: 'week', generator: 'linear', start: 1, end: 12, step: 1 },
-            { name: 'order_count', generator: 'normal', mean: 200, stddev: 50, min: 50, max: 400 }
-          ]
-        },
-        assumptions: ['created_at is present']
+        assumptions: ['created_at is present'],
+        plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2, 3], y: [10, 20, 30] }],
+        plotlyLayout: { title: { text: 'Orders trend' } }
       }
-    ],
-    realData: null
+    ]
   })
 
   renderApp()

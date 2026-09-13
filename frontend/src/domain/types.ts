@@ -30,88 +30,20 @@ export interface DatasetSchema {
   warnings: string[]
 }
 
-export type ChartType = 'bar' | 'line' | 'pie' | 'scatter' | 'heatmap' | 'geomap'
-
-export type AggregationFunc = 'sum' | 'mean' | 'count' | 'min' | 'max' | 'median' | 'first' | 'last'
-
-export type FilterOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'not_in'
-
-export interface TraceFilter {
-  field: string
-  op: FilterOperator
-  value: string | number | (string | number)[]
-}
-
-export interface TraceSpec {
-  chartType: ChartType
-  xAxis: string
-  yAxis: string
-  zAxis?: string | null
-  aggregation?: AggregationFunc | null
-  filter?: TraceFilter | null
-  yaxis2?: string | null
-  name?: string | null
-}
-
-export interface ChartSpec {
-  mode: 'recipe' | 'custom'
-  traces: TraceSpec[]
-  plotlyData?: unknown[] | null
-  plotlyLayout?: Record<string, unknown> | null
-}
-
-export type DataGenerator = 'category' | 'normal' | 'uniform' | 'linear' | 'constant'
-
-export interface DataColumnSpec {
-  name: string
-  generator: DataGenerator
-  categories?: string[] | null
-  min?: number | null
-  max?: number | null
-  mean?: number | null
-  stddev?: number | null
-  start?: number | null
-  end?: number | null
-  step?: number | null
-  value?: unknown | null
-}
-
-export interface DataProfile {
-  columns: DataColumnSpec[]
-}
-
 export interface InsightCandidate {
   id: string
   title: string
   summary: string
   keyIdea: string
   metricDescription: string
-  chartSpec: ChartSpec
-  dataProfile: DataProfile | null
   assumptions: string[]
+  plotlyData: unknown[]
+  plotlyLayout: Record<string, unknown>
   description?: string | null
 }
 
-export interface GeneratedDataset {
-  id: string
-  name: string
-  columns: string[]
-  rows: Record<string, unknown>[]
-}
-
-export interface ChartCard {
-  id: string
-  title: string
-  chartType: ChartType
-  datasetId: string
-  insightId?: string
-}
-
-export type DataFormat = 'csv' | 'json' | 'jsonl' | 'unknown'
-
-export interface RawDataResult {
-  format: DataFormat
-  columns: string[]
-  rows: Record<string, unknown>[]
-  rowCount: number
+export interface DatasetSchema {
+  source: string
+  fields: DatasetField[]
+  warnings: string[]
 }

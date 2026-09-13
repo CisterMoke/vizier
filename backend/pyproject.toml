@@ -12,6 +12,7 @@ dependencies = [
     "aiohttp>=3.9.0",
     "sqlalchemy>=2.0.0",
     "python-dotenv>=1.0.0",
+    "jsonpath-python>=1.1.6",
 ]
 
 [dependency-groups]

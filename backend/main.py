@@ -26,6 +26,8 @@ from pydantic_ai.providers import infer_provider_class
 sys.path.append(str(Path(__file__).parents[1]))
 
 from backend.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+from backend.chart_builder import build_plotly_spec
+from backend.mock_data import generate_mock_rows
 
 # Load .env file before reading any env vars
 load_dotenv()
@@ -125,7 +127,7 @@ For each field, provide:
 Set the source to a short description of where the data comes from.
 Include warnings for any fields you are uncertain about."""
 
-INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and jsonPath values, generate creative analytics hypotheses suitable for a hackathon demo.
+INSIGHT_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema (or a data sample with a description), generate creative analytics hypotheses suitable for a hackathon demo.
 
 For each insight, provide a chartSpec object that MUST include "mode": "recipe" and a "traces" array with AT LEAST ONE trace.
 
@@ -199,6 +201,7 @@ Provide a dataProfile with columns. Each column must have a "generator" field:
   - "constant": include "value"
 Column names in dataProfile must be jsonPath strings matching the chartSpec trace xAxis/yAxis/zAxis values.
 Each insight MUST have a non-empty id, title, summary, and keyIdea. Do not leave any of these fields empty or null.
+If you are given a data sample (JSON rows), infer the field names and jsonPath values from the sample's keys.
 Return practical, visually interesting ideas with concise reasoning."""
 
 # --- Pydantic output models ---
@@ -376,20 +379,47 @@ async def _run_pipeline(
     schema_text: str,
     real_data: dict | None = None,
 ) -> dict:
-    """Run the LLM pipeline: schema mapping → insights (2 calls, no field mapping)."""
-    # 1. Map schema
-    schema = await call_llm(
-        MAP_SCHEMA_PROMPT,
-        f"Analyze this data description and extract the dataset schema:\n\n{schema_text}",
-        DatasetSchema,
-    )
+    """Run the LLM pipeline and build Plotly specs.
 
-    # 2. Generate insights
-    insights = await call_llm(
-        INSIGHT_PROMPT,
-        f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}",
-        InsightEnvelope,
-        retry_prompt=(
+    When real data is provided: skip the schema-mapping LLM call and send
+    a data sample directly to the insight-generation LLM.
+    When no real data: run schema-mapping first, then generate insights.
+    After LLM calls, build Plotly specs for each insight using either
+    real data or mock data.
+    """
+    real_rows = real_data.get("rows", []) if real_data and real_data.get("rowCount", 0) > 0 else []
+    use_real_data = len(real_rows) > 0
+
+    if use_real_data:
+        # Skip schema LLM call — send data sample directly to insights LLM
+        sample = real_rows[:5]
+        sample_json = json.dumps(sample, default=str)
+        user_prompt = (
+            f"Here is a sample of the dataset (first {len(sample)} rows as JSON):\n\n{sample_json}\n\n"
+            f"Additional context from the user: {schema_text}\n\n"
+            f"Infer the field names and jsonPath values from the sample's keys. "
+            f"Produce up to 10 insight candidates."
+        )
+        retry_prompt = (
+            f"Generate 5 analytics insights for this data. Each insight MUST have all required fields: "
+            f'id, title, summary, keyIdea, metricDescription, '
+            f'chartSpec (with mode="recipe" and a traces array with at least one trace, '
+            f'each trace needs chartType, xAxis, yAxis as jsonPath strings, and optional aggregation), '
+            f'dataProfile (with columns, each column needs name and generator), '
+            f'and assumptions (array of strings). '
+            f'Do NOT leave any field empty or null.\n\n'
+            f'Data sample: {sample_json}\n\nContext: {schema_text}'
+        )
+        schema = None
+    else:
+        # Schema-mapping LLM call from text description
+        schema = await call_llm(
+            MAP_SCHEMA_PROMPT,
+            f"Analyze this data description and extract the dataset schema:\n\n{schema_text}",
+            DatasetSchema,
+        )
+        user_prompt = f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}"
+        retry_prompt = (
             f"Generate 5 analytics insights for this schema. Each insight MUST have all required fields: "
             f'id, title, summary, keyIdea, metricDescription, '
             f'chartSpec (with mode="recipe" and a traces array with at least one trace, '
@@ -397,14 +427,32 @@ async def _run_pipeline(
             f'dataProfile (with columns, each column needs name and generator), '
             f'and assumptions (array of strings). '
             f'Do NOT leave any field empty or null.\n\nSchema: {json.dumps(schema)}'
-        ),
+        )
+
+    # Insight generation LLM call
+    insights_output = await call_llm(
+        INSIGHT_PROMPT,
+        user_prompt,
+        InsightEnvelope,
+        retry_prompt=retry_prompt,
         validate_fn=_validate_insights,
     )
 
+    # Build Plotly specs for each insight
+    insights_list = insights_output.get("insights", [])
+    for i, insight in enumerate(insights_list):
+        if use_real_data:
+            rows = real_rows
+        else:
+            rows = generate_mock_rows(insight, seed=1337 + i)
+
+        plotly_spec = build_plotly_spec(insight, rows)
+        insight["plotlyData"] = plotly_spec["data"]
+        insight["plotlyLayout"] = plotly_spec["layout"]
+
     return {
         "schema": schema,
-        "insights": insights,
-        "realData": real_data,
+        "insights": {"insights": insights_list},
     }
 
 
@@ -464,51 +512,6 @@ async def generate_upload(
         tmp_path.unlink(missing_ok=True)
 
     return await _run_pipeline(schemaText, real_data)
-
-
-@app.post("/api/apply-data")
-async def apply_data(request: GenerateRequest) -> dict:
-    """Fetch and parse real data only (no LLM calls). Returns the parsed data for existing insights."""
-    if request.data_source_mode == "rest" and request.rest_url:
-        raw_text = await fetch_rest_data(
-            request.rest_method or "GET",
-            request.rest_url,
-            request.rest_headers or "",
-            request.rest_body or "",
-        )
-        from backend.parser import parse_data
-        return parse_data(raw_text, "json")
-
-    elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
-        raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
-        from backend.parser import parse_data
-        return parse_data(raw_json, "json")
-
-    raise HTTPException(status_code=400, detail="No valid data source provided")
-
-
-@app.post("/api/apply-data-upload")
-async def apply_data_upload(
-    file: UploadFile = File(...),
-    fileFormat: str = Form(default="csv"),
-) -> dict:
-    """Parse uploaded file only (no LLM calls). Returns the parsed data for existing insights."""
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Max {MAX_FILE_SIZE // (1024 * 1024)} MB. Got {len(content) // (1024 * 1024)} MB.",
-        )
-
-    with tempfile.NamedTemporaryFile(mode="wb", suffix=f".{fileFormat}", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        from backend.parser import parse_data
-        return parse_data(tmp_path, fileFormat)
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
 
 @app.get("/api/health")

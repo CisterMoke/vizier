@@ -1,20 +1,18 @@
 import { Button, Card, Group, Stack, Text, Title, List } from '@mantine/core'
 import { useState, useCallback } from 'preact/hooks'
-import type { GeneratedDataset, InsightCandidate } from '../domain/types'
+import type { InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
-import { buildPlotlySpec } from '../services/chartSpec'
+import type * as Plotly from 'plotly.js'
 
 const Plot =
   (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
 
 interface ChartCarouselProps {
   insights: InsightCandidate[]
-  datasetsByInsightId: Record<string, GeneratedDataset>
-  onRegenerate: (insightId: string) => void
   onDelete: (insightId: string) => void
 }
 
-export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onDelete }: ChartCarouselProps) {
+export function ChartCarousel({ insights, onDelete }: ChartCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0)
 
   const next = useCallback(() => {
@@ -30,13 +28,10 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
   }
 
   const insight = insights[activeIndex]
-  const dataset = datasetsByInsightId[insight?.id ?? '']
 
-  if (!insight || !dataset) {
+  if (!insight) {
     return null
   }
-
-  const spec = buildPlotlySpec(insight, dataset)
 
   return (
     <Stack gap="md">
@@ -67,9 +62,7 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
         className="bg-gray-900/50 backdrop-blur-sm shadow-lg border-gray-700/50"
       >
         <Stack gap="md">
-          <Group justify="space-between" align="flex-start">
-            <Title order={4}>{insight.title}</Title>
-          </Group>
+          <Title order={4}>{insight.title}</Title>
           <Text c="dimmed" size="sm">{insight.summary}</Text>
 
           <Text size="sm">
@@ -87,14 +80,10 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
             </List>
           ) : null}
 
-          <Text size="xs" c="dimmed">
-            Data source: {dataset.name} ({dataset.rows.length} rows)
-          </Text>
-
           <Plot
-            data={spec.data}
+            data={insight.plotlyData as Plotly.Data[]}
             layout={{
-              ...spec.layout,
+              ...insight.plotlyLayout as Partial<Plotly.Layout>,
               autosize: true
             }}
             config={{ responsive: true, displaylogo: false }}
@@ -103,9 +92,6 @@ export function ChartCarousel({ insights, datasetsByInsightId, onRegenerate, onD
           />
 
           <Group justify="flex-end">
-            <Button variant="default" type="button" onClick={() => onRegenerate(insight.id)}>
-              Regenerate
-            </Button>
             <Button color="red" variant="light" type="button" onClick={() => onDelete(insight.id)}>
               Delete
             </Button>

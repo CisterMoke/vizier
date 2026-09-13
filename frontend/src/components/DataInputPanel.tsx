@@ -29,15 +29,13 @@ export interface GenerateRequest {
 
 interface DataInputPanelProps {
   onGenerate: (request: GenerateRequest) => Promise<void>
-  onApplyData?: (request: GenerateRequest) => Promise<void>
   isGenerating: boolean
-  isApplyingData?: boolean
   hasInsights?: boolean
 }
 
 const MAX_FILE_SIZE_MB = (import.meta.env.VITE_MAX_FILE_SIZE_MB as number) ?? 10
 
-export function DataInputPanel({ onGenerate, onApplyData, isGenerating, isApplyingData, hasInsights }: DataInputPanelProps) {
+export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
   const [file, setFile] = useState<File | null>(null)
@@ -211,29 +209,10 @@ export function DataInputPanel({ onGenerate, onApplyData, isGenerating, isApplyi
               <Button type="submit" loading={isGenerating} disabled={isGenerating}>
                 {isGenerating ? 'Analyzing & generating...' : 'Generate analytics'}
               </Button>
-              {hasInsights && onApplyData && dataSourceMode !== 'none' ? (
-                <Button
-                  type="button"
-                  variant="light"
-                  loading={isApplyingData}
-                  disabled={isApplyingData || isGenerating}
-                  onClick={async (e) => {
-                    e.preventDefault()
-                    if (schemaText.trim().length === 0) return
-                    await onApplyData({
-                      schemaText,
-                      dataSource: {
-                        mode: dataSourceMode,
-                        file: dataSourceMode === 'file' ? (file ?? undefined) : undefined,
-                        fileFormat,
-                        rest: dataSourceMode === 'rest' ? restConfig : undefined,
-                        sql: dataSourceMode === 'sql' ? sqlConfig : undefined
-                      }
-                    })
-                  }}
-                >
-                  {isApplyingData ? 'Applying data...' : 'Apply real data'}
-                </Button>
+              {hasInsights && dataSourceMode !== 'none' ? (
+                <Text c="dimmed" size="sm">
+                  Selecting a data source and generating will refresh insights with real data.
+                </Text>
               ) : null}
             </Group>
           </Stack>
