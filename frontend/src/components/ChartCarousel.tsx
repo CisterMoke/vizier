@@ -2,7 +2,6 @@ import { Button, Card, Group, Stack, Text, Title, List } from '@mantine/core'
 import { useState, useCallback } from 'preact/hooks'
 import type { InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
-import type * as Plotly from 'plotly.js'
 
 const Plot =
   (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
