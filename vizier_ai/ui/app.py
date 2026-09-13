@@ -1,7 +1,7 @@
 """FastAPI server layer for Vizier AI.
 
 Wraps the core library (vizier_ai.core) with HTTP endpoints, session
-storage, rate limiting, and file upload handling.
+storage, rate limiting, file upload handling, and static frontend serving.
 """
 
 import os
@@ -13,12 +13,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-sys.path.append(str(Path(__file__).parents[1]))
+sys.path.append(str(Path(__file__).parents[2]))
 
-from vizier_ai.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+from vizier_ai.ui.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 from vizier_ai.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_plotly_spec, generate_mock_rows
 from vizier_ai.parser import parse_data
 
@@ -250,3 +251,18 @@ async def edit_chart(request: EditChartRequest) -> dict:
 @app.get("/api/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+# --- Static frontend serving ---
+
+_FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+
+if _FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = _FRONTEND_DIST / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_FRONTEND_DIST / "index.html")

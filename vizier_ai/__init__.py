@@ -4,7 +4,7 @@ Standalone Python library for generating analytics chart ideas from
 data schemas, data samples, or full datasets.
 
 Usage:
-    from backend import run_pipeline, build_plotly_spec, parse_data
+    from vizier_ai import run_pipeline, build_plotly_spec, parse_data
 
     # Generate insights from a text description
     result = await run_pipeline("orders table with id, total, status")

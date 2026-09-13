@@ -20,3 +20,7 @@ docs/
 DEPLOYMENT.md
 opencode.json
 skills-lock.json
+
+__pycache__
+*.pyc
+*.egg-info

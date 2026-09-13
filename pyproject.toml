@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "vizier-ai"
 version = "0.1.0"
@@ -13,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server = [
+ui = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "python-dotenv>=1.0.0",
@@ -21,3 +25,13 @@ server = [
 
 [dependency-groups]
 dev = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vizier_ai", "vizier_ai.*"]
+
+[tool.setuptools.package-data]
+vizier_ai = [
+    "ui/frontend/dist/**/*",
+    "ui/frontend/dist/assets/**/*",
+]

@@ -56,17 +56,16 @@ cd vizier-ai
 2. **Backend setup:**
 
 ```bash
-cd backend
-uv sync
+uv sync --extra ui
 cp .env.example .env
 # Edit .env and set LLM_API_KEY=your-key-here
-uv run uvicorn main:app --reload --port 8000
+uv run uvicorn vizier_ai.ui.main:app --reload --port 8000
 ```
 
 3. **Frontend setup (in another terminal):**
 
 ```bash
-cd frontend
+cd vizier_ai/ui/frontend
 npm install
 cp .env.example .env
 # Edit .env if backend is not at http://localhost:8000
@@ -77,7 +76,7 @@ npm run dev
 
 ### Configuration
 
-**Backend (`vizier_ai/.env`):**
+**Backend (`.env` at repo root):**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -89,7 +88,7 @@ npm run dev
 | `GLOBAL_RATE_LIMIT_WINDOW_SECONDS` | 60 | Global rate limit window |
 | `MAX_FILE_SIZE_MB` | 10 | Max file upload size in MB |
 
-**Frontend (`frontend/.env`):**
+**Frontend (`vizier_ai/ui/frontend/.env`):**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -164,32 +163,37 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment instructions.
 ```
 vizier-ai/
 ├── vizier_ai/
-│   ├── main.py          # FastAPI server, LLM pipeline, endpoints
-│   ├── parser.py        # CSV/JSON/JSONL parser (pandas, max 5000 rows)
-│   ├── ratelimit.py     # Per-IP + global rate limiting
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── app.tsx              # Main app flow
-│   │   ├── components/          # DataInputPanel, ChartCarousel, ChartCard
-│   │   ├── domain/              # Types and Zod schemas
-│   │   ├── services/            # API client, chart builder, JSONPath, mock data
-│   │   └── store/               # Workspace state
-│   └── .env.example
-├── setup.sh             # One-command Ubuntu deployment
-├── deploy-update.sh     # Rebuild + restart script
-└── DEPLOYMENT.md         # Full deployment guide
+│   ├── core.py              # Standalone library: LLM calls, pipeline, models
+│   ├── chart_builder.py     # Plotly spec builder (JSONPath, aggregation, filters)
+│   ├── mock_data.py         # Mock data generator (seeded PRNG)
+│   ├── parser.py            # CSV/JSON/JSONL parser (pandas, max 5000 rows)
+│   └── ui/
+│       ├── app.py           # FastAPI server (routes, sessions, rate limiting)
+│       ├── main.py          # Uvicorn entry point
+│       ├── ratelimit.py     # Per-IP + global rate limiting
+│       └── frontend/        # Preact SPA (Vite, Mantine, Tailwind, Plotly)
+│           ├── src/
+│           │   ├── app.tsx          # Main app flow
+│           │   ├── components/      # DataInputPanel, ChartCarousel
+│           │   ├── domain/         # Types and Zod schemas
+│           │   ├── services/       # API client
+│           │   └── store/          # Workspace state
+│           └── dist/               # Built frontend (served by FastAPI)
+├── pyproject.toml           # Package definition (pip install vizier-ai[ui])
+├── setup.sh                 # One-command Ubuntu deployment
+├── deploy-update.sh         # Rebuild + restart script
+└── DEPLOYMENT.md            # Full deployment guide
 ```
 
 ## Development
 
 ```bash
 # Frontend tests
-cd frontend && npm run test
+cd vizier_ai/ui/frontend && npm run test
 
 # Frontend build
-cd frontend && npm run build
+cd vizier_ai/ui/frontend && npm run build
 
 # Backend import check
-cd backend && uv run python -c "import main; print('OK')"
+uv run python -c "from vizier_ai.ui.main import app; print('OK')"
 ```
