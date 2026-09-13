@@ -21,7 +21,7 @@ Usage:
     )
 """
 
-from backend.core import (
+from vizier_ai.core import (
     run_pipeline,
     call_llm,
     fetch_rest_data,
@@ -29,9 +29,9 @@ from backend.core import (
     DEFAULT_MAP_SCHEMA_PROMPT,
     DEFAULT_INSIGHT_PROMPT,
 )
-from backend.chart_builder import build_plotly_spec
-from backend.mock_data import generate_mock_rows
-from backend.parser import parse_data
+from vizier_ai.chart_builder import build_plotly_spec
+from vizier_ai.mock_data import generate_mock_rows
+from vizier_ai.parser import parse_data
 
 __all__ = [
     "run_pipeline",

@@ -77,7 +77,7 @@ npm run dev
 
 ### Configuration
 
-**Backend (`backend/.env`):**
+**Backend (`vizier_ai/.env`):**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -98,7 +98,7 @@ npm run dev
 
 ### Supported LLM Models
 
-Any model supported by [pydantic-ai](https://ai.pydantic.dev/). Set `LLM_MODEL` in `backend/.env`:
+Any model supported by [pydantic-ai](https://ai.pydantic.dev/). Set `LLM_MODEL` in `vizier_ai/.env`:
 
 - `google:gemini-2.0-flash` (Google Gemini)
 - `google:gemini-3.5-flash-lite` (default)
@@ -163,7 +163,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment instructions.
 
 ```
 vizier-ai/
-├── backend/
+├── vizier_ai/
 │   ├── main.py          # FastAPI server, LLM pipeline, endpoints
 │   ├── parser.py        # CSV/JSON/JSONL parser (pandas, max 5000 rows)
 │   ├── ratelimit.py     # Per-IP + global rate limiting

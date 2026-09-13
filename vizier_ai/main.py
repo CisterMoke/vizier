@@ -1,6 +1,6 @@
 """Backward-compatible entry point.
 
-Imports the FastAPI app from backend.app so deployment scripts
+Imports the FastAPI app from vizier_ai.app so deployment scripts
 referencing 'main:app' continue to work.
 """
 
@@ -9,6 +9,6 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parents[1]))
 
-from backend.app import app
+from vizier_ai.app import app
 
 __all__ = ["app"]

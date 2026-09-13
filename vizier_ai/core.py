@@ -3,7 +3,7 @@
 This module contains all the library-grade logic with zero FastAPI/HTTP
 dependencies. It can be used independently as a Python library:
 
-    from backend.core import run_pipeline, call_llm, build_plotly_spec
+    from vizier_ai.core import run_pipeline, call_llm, build_plotly_spec
 
 The LLM model and API key are injectable via parameters with env-based
 defaults. Prompts are overridable constants.
@@ -21,9 +21,9 @@ from pydantic_ai import Agent
 from pydantic_ai.models import infer_model
 from pydantic_ai.providers import infer_provider_class
 
-from backend.chart_builder import build_plotly_spec
-from backend.mock_data import generate_mock_rows
-from backend.parser import parse_data
+from vizier_ai.chart_builder import build_plotly_spec
+from vizier_ai.mock_data import generate_mock_rows
+from vizier_ai.parser import parse_data
 
 
 # --- Default prompts (overridable via parameters) ---
@@ -380,7 +380,7 @@ async def run_pipeline(
         **llm_kwargs,
     )
 
-    # Build Plotly specs for each insight, then strip backend-internal fields
+    # Build Plotly specs for each insight, then strip internal fields
     insights_list = insights_output.get("insights", [])
     for i, insight in enumerate(insights_list):
         if use_real_data:

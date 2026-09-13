@@ -1,6 +1,6 @@
 """FastAPI server layer for Vizier AI.
 
-Wraps the core library (backend.core) with HTTP endpoints, session
+Wraps the core library (vizier_ai.core) with HTTP endpoints, session
 storage, rate limiting, and file upload handling.
 """
 
@@ -18,9 +18,9 @@ from pydantic import BaseModel, Field
 
 sys.path.append(str(Path(__file__).parents[1]))
 
-from backend.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
-from backend.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_plotly_spec, generate_mock_rows
-from backend.parser import parse_data
+from vizier_ai.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+from vizier_ai.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_plotly_spec, generate_mock_rows
+from vizier_ai.parser import parse_data
 
 # Load .env file before reading any env vars
 load_dotenv()
