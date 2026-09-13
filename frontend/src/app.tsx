@@ -1,20 +1,22 @@
 import { useState } from 'preact/hooks'
-import { Alert, Badge, Container, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { ChartCarousel } from './components/ChartCarousel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
-import { callGenerate } from './services/apiClient'
+import { callGenerate, regenerate } from './services/apiClient'
 import { useWorkspaceStore } from './store/workspaceStore'
 
 export function App() {
   const workspace = useWorkspaceStore()
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [hasRealData, setHasRealData] = useState(false)
 
   const handleGenerate = async (request: GenerateRequest) => {
     workspace.setInsights([])
+    workspace.setSessionId('')
     setGenerationError(null)
     setStatusMessage(null)
     setHasRealData(false)
@@ -25,6 +27,7 @@ export function App() {
       setStatusMessage('Analyzing data and generating insights...')
       const result = await callGenerate(request)
 
+      workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
       setHasRealData(request.dataSource.mode !== 'none')
       setStatusMessage(null)
@@ -34,6 +37,27 @@ export function App() {
       )
     } finally {
       setIsGenerating(false)
+      setStatusMessage(null)
+    }
+  }
+
+  const handleRegenerate = async () => {
+    if (!workspace.sessionId) return
+
+    setGenerationError(null)
+    setIsRegenerating(true)
+
+    try {
+      setStatusMessage('Regenerating insights...')
+      const newInsights = await regenerate(workspace.sessionId)
+      workspace.setInsights(newInsights)
+      setStatusMessage(null)
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : 'Failed to regenerate insights.'
+      )
+    } finally {
+      setIsRegenerating(false)
       setStatusMessage(null)
     }
   }
@@ -74,6 +98,19 @@ export function App() {
             hasInsights={workspace.insights.length > 0}
           />
 
+          {workspace.insights.length > 0 ? (
+            <Group justify="flex-end">
+              <Button
+                variant="light"
+                loading={isRegenerating}
+                disabled={isRegenerating || isGenerating}
+                onClick={handleRegenerate}
+              >
+                {isRegenerating ? 'Regenerating...' : 'Regenerate insights'}
+              </Button>
+            </Group>
+          ) : null}
+
           {hasRealData ? (
             <Text c="green" size="sm" fw={500}>
               Charts rendered with real data
@@ -82,6 +119,7 @@ export function App() {
 
           <ChartCarousel
             insights={workspace.insights}
+            sessionId={workspace.sessionId}
             onDelete={handleDeleteCard}
           />
         </Stack>

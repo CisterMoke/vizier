@@ -8,7 +8,9 @@ vi.mock('react-plotly.js', () => ({
 const callGenerateMock = vi.fn()
 
 vi.mock('./services/apiClient', () => ({
-  callGenerate: (...args: unknown[]) => callGenerateMock(...args)
+  callGenerate: (...args: unknown[]) => callGenerateMock(...args),
+  regenerate: vi.fn(),
+  editChart: vi.fn(),
 }))
 
 import { App } from './app'
@@ -28,6 +30,7 @@ it('renders analytics idea lab shell', () => {
 
 it('calls backend API on generate and renders chart cards', async () => {
   callGenerateMock.mockResolvedValue({
+    sessionId: 'test-session',
     insights: [
       {
         id: 'insight-1',

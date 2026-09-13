@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +111,32 @@ async def rate_limit_middleware(request: Request, call_next):
     response.headers["X-RateLimit-Global-Remaining"] = str(global_remaining)
     response.headers["X-RateLimit-Global-Limit"] = str(_global_config.max_requests)
     return response
+
+# --- Session storage (in-memory, per-session data retention) ---
+
+_sessions: dict[str, dict] = {}
+SESSION_TTL_SECONDS = 3600
+
+
+def _create_session(real_data: dict | None, schema_text: str) -> str:
+    session_id = uuid.uuid4().hex
+    _sessions[session_id] = {
+        "real_data": real_data,
+        "schema_text": schema_text,
+    }
+    return session_id
+
+
+def _get_session(session_id: str) -> dict | None:
+    return _sessions.get(session_id)
+
+
+def _get_session_rows(session: dict) -> list[dict]:
+    real_data = session.get("real_data")
+    if real_data and real_data.get("rowCount", 0) > 0:
+        return real_data.get("rows", [])
+    return []
+
 
 # --- Prompts ---
 
@@ -455,7 +482,10 @@ async def _run_pipeline(
         insight.pop("dataProfile", None)
         insight.pop("description", None)
 
+    session_id = _create_session(real_data, schema_text)
+
     return {
+        "sessionId": session_id,
         "insights": {"insights": insights_list},
     }
 
@@ -516,6 +546,58 @@ async def generate_upload(
         tmp_path.unlink(missing_ok=True)
 
     return await _run_pipeline(schemaText, real_data)
+
+
+class RegenerateRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+
+
+@app.post("/api/regenerate")
+async def regenerate(request: RegenerateRequest) -> dict:
+    """Regenerate insights using stored session data (no re-upload)."""
+    session = _get_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired.")
+
+    schema_text = session.get("schema_text", "")
+    real_data = session.get("real_data")
+
+    return await _run_pipeline(schema_text, real_data)
+
+
+class EditChartRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    traces: list[dict] = []
+
+
+@app.post("/api/edit-chart")
+async def edit_chart(request: EditChartRequest) -> dict:
+    """Rebuild Plotly specs from modified trace specs (no LLM call).
+
+    Accepts a list of trace specs (chartType, xAxis, yAxis, zAxis, aggregation,
+    filter, yaxis2, name) and builds Plotly data/layout from the session's
+    stored data or mock data.
+    """
+    session = _get_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired.")
+
+    rows = _get_session_rows(session)
+
+    if not rows:
+        rows = generate_mock_rows(
+            {"dataProfile": {"columns": []}},
+            seed=1337,
+        )
+
+    chart_spec = {"mode": "recipe", "traces": request.traces}
+    insight = {"title": "Custom chart", "chartSpec": chart_spec}
+    plotly_spec = build_plotly_spec(insight, rows)
+
+    return {
+        "plotlyData": plotly_spec["data"],
+        "plotlyLayout": plotly_spec["layout"],
+    }
 
 
 @app.get("/api/health")

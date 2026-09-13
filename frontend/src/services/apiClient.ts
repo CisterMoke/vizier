@@ -3,6 +3,7 @@ import { parseInsightEnvelope } from '../domain/schemas'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
+  sessionId: string
   insights: InsightCandidate[]
 }
 
@@ -12,6 +13,7 @@ async function parseResponse(response: Response): Promise<GenerateResponse> {
   const raw = await response.json()
 
   return {
+    sessionId: raw.sessionId ?? '',
     insights: parseInsightEnvelope(raw.insights).insights,
   }
 }
@@ -59,4 +61,54 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
   }
 
   return parseResponse(response)
+}
+
+export const regenerate = async (sessionId: string, backendUrl?: string): Promise<InsightCandidate[]> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  const response = await fetch(`${baseUrl}/api/regenerate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId })
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Backend error ${response.status}: ${errorText}`)
+  }
+
+  const raw = await response.json()
+  return parseInsightEnvelope(raw.insights).insights
+}
+
+export interface TraceSpec {
+  chartType: string
+  xAxis: string
+  yAxis: string
+  zAxis?: string | null
+  aggregation?: string | null
+  filter?: { field: string; op: string; value: string | number | (string | number)[] } | null
+  yaxis2?: string | null
+  name?: string | null
+}
+
+export const editChart = async (
+  sessionId: string,
+  traces: TraceSpec[],
+  backendUrl?: string
+): Promise<{ plotlyData: unknown[]; plotlyLayout: Record<string, unknown> }> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  const response = await fetch(`${baseUrl}/api/edit-chart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, traces })
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Backend error ${response.status}: ${errorText}`)
+  }
+
+  return await response.json()
 }

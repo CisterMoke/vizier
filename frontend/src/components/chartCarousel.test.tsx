@@ -9,6 +9,10 @@ vi.mock('react-plotly.js', () => ({
   )
 }))
 
+vi.mock('../services/apiClient', () => ({
+  editChart: vi.fn().mockResolvedValue({ plotlyData: [], plotlyLayout: {} }),
+}))
+
 const insights: InsightCandidate[] = [
   {
     id: 'ins-1',
@@ -32,14 +36,19 @@ const insights: InsightCandidate[] = [
   }
 ]
 
+const renderCarousel = (props: any) =>
+  render(
+    <div id="portal-root">
+      <MantineProvider>
+        <ChartCarousel {...props} />
+      </MantineProvider>
+    </div>
+  )
+
 it('renders a single chart card with navigation dots for multiple insights', () => {
   const onDelete = vi.fn()
 
-  render(
-    <MantineProvider>
-      <ChartCarousel insights={insights} onDelete={onDelete} />
-    </MantineProvider>
-  )
+  renderCarousel({ insights, sessionId: 'test-session', onDelete })
 
   expect(screen.getByRole('heading', { name: /revenue by category/i })).toBeInTheDocument()
   expect(screen.getByTestId('chart-card')).toBeInTheDocument()
@@ -49,11 +58,7 @@ it('renders a single chart card with navigation dots for multiple insights', () 
 it('navigates to next chart when clicking the next button', () => {
   const onDelete = vi.fn()
 
-  render(
-    <MantineProvider>
-      <ChartCarousel insights={insights} onDelete={onDelete} />
-    </MantineProvider>
-  )
+  renderCarousel({ insights, sessionId: 'test-session', onDelete })
 
   expect(screen.getByRole('heading', { name: /revenue by category/i })).toBeInTheDocument()
 
@@ -64,11 +69,7 @@ it('navigates to next chart when clicking the next button', () => {
 it('exposes delete action', () => {
   const onDelete = vi.fn()
 
-  render(
-    <MantineProvider>
-      <ChartCarousel insights={insights} onDelete={onDelete} />
-    </MantineProvider>
-  )
+  renderCarousel({ insights, sessionId: 'test-session', onDelete })
 
   fireEvent.click(screen.getByRole('button', { name: /delete/i }))
 
