@@ -9,6 +9,8 @@ Usage:
 import subprocess
 import sys
 import os
+import threading
+import signal
 from pathlib import Path
 
 FRONTEND_DIR = Path(__file__).parents[2] / "ui" / "frontend"
@@ -18,11 +20,12 @@ PROJECT_ROOT = Path(__file__).parents[2]
 def backend():
     """Start the FastAPI backend with hot reload."""
     os.chdir(PROJECT_ROOT)
-    subprocess.run([
-        sys.executable, "-m", "uvicorn",
+    import uvicorn
+    uvicorn.run(
         "vizier_ai.ui.main:app",
-        "--reload", "--port", "8000",
-    ])
+        reload=True,
+        port=8000,
+    )
 
 
 def frontend():
@@ -35,28 +38,25 @@ def frontend():
 
 def dev():
     """Start both backend and frontend concurrently."""
-    import signal
-    import threading
-
-    procs = []
+    stop_event = threading.Event()
 
     def start_backend():
         os.chdir(PROJECT_ROOT)
-        p = subprocess.Popen([
-            sys.executable, "-m", "uvicorn",
+        import uvicorn
+        uvicorn.run(
             "vizier_ai.ui.main:app",
-            "--reload", "--port", "8000",
-        ])
-        procs.append(p)
-        p.wait()
+            reload=True,
+            port=8000,
+        )
 
     def start_frontend():
         if not (FRONTEND_DIR / "node_modules").exists():
             print("Installing frontend dependencies...")
             subprocess.run(["npm", "install"], cwd=FRONTEND_DIR, check=True)
-        p = subprocess.Popen(["npm", "run", "dev"], cwd=FRONTEND_DIR)
-        procs.append(p)
-        p.wait()
+        subprocess.run(["npm", "run", "dev"], cwd=FRONTEND_DIR)
+
+    print("Vizier AI dev mode: backend on http://localhost:8000, frontend on http://localhost:5173")
+    print("Press Ctrl+C to stop both.\n")
 
     bt = threading.Thread(target=start_backend, daemon=True)
     ft = threading.Thread(target=start_frontend, daemon=True)
@@ -64,15 +64,10 @@ def dev():
     ft.start()
 
     def kill_all(*_):
-        for p in procs:
-            p.terminate()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, kill_all)
     signal.signal(signal.SIGTERM, kill_all)
-
-    print("Vizier AI dev mode: backend on http://localhost:8000, frontend on http://localhost:5173")
-    print("Press Ctrl+C to stop both.\n")
 
     bt.join()
     ft.join()
