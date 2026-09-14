@@ -35,3 +35,8 @@ vizier_ai = [
     "ui/frontend/dist/**/*",
     "ui/frontend/dist/assets/**/*",
 ]
+
+[project.scripts]
+vizier-dev = "vizier_ai.ui.scripts:dev"
+vizier-dev-backend = "vizier_ai.ui.scripts:backend"
+vizier-dev-frontend = "vizier_ai.ui.scripts:frontend"
