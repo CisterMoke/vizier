@@ -8,23 +8,27 @@ Usage:
 
 import subprocess
 import sys
-import os
 import threading
 import signal
 from pathlib import Path
 
-FRONTEND_DIR = Path(__file__).parents[2] / "ui" / "frontend"
+FRONTEND_DIR = Path(__file__).parent / "frontend"
 PROJECT_ROOT = Path(__file__).parents[2]
 
 
 def backend():
-    """Start the FastAPI backend with hot reload."""
-    os.chdir(PROJECT_ROOT)
-    import uvicorn
-    uvicorn.run(
-        "vizier_ai.ui.main:app",
-        reload=True,
-        port=8000,
+    subprocess.run(
+        [
+            "uvicorn",
+            "--port",
+            "8000",
+            "--reload",
+            "--reload-dir",
+            Path(__file__).parent.relative_to(PROJECT_ROOT).as_posix(),
+            "vizier_ai.ui.main:app"
+        ],
+        cwd=PROJECT_ROOT,
+        check=True,
     )
 
 
@@ -32,34 +36,26 @@ def frontend():
     """Start the Vite frontend dev server."""
     if not (FRONTEND_DIR / "node_modules").exists():
         print("Installing frontend dependencies...")
-        subprocess.run(["npm", "install"], cwd=FRONTEND_DIR, check=True)
-    subprocess.run(["npm", "run", "dev"], cwd=FRONTEND_DIR)
+        subprocess.run(
+            ["npm", "install"],
+            cwd=FRONTEND_DIR,
+            check=True
+        )
+    subprocess.run(
+        ["npm", "run", "dev"],
+        cwd=FRONTEND_DIR,
+        check=True,
+    )
 
 
 def dev():
     """Start both backend and frontend concurrently."""
-    stop_event = threading.Event()
-
-    def start_backend():
-        os.chdir(PROJECT_ROOT)
-        import uvicorn
-        uvicorn.run(
-            "vizier_ai.ui.main:app",
-            reload=True,
-            port=8000,
-        )
-
-    def start_frontend():
-        if not (FRONTEND_DIR / "node_modules").exists():
-            print("Installing frontend dependencies...")
-            subprocess.run(["npm", "install"], cwd=FRONTEND_DIR, check=True)
-        subprocess.run(["npm", "run", "dev"], cwd=FRONTEND_DIR)
 
     print("Vizier AI dev mode: backend on http://localhost:8000, frontend on http://localhost:5173")
     print("Press Ctrl+C to stop both.\n")
 
-    bt = threading.Thread(target=start_backend, daemon=True)
-    ft = threading.Thread(target=start_frontend, daemon=True)
+    bt = threading.Thread(target=backend, daemon=True)
+    ft = threading.Thread(target=frontend, daemon=True)
     bt.start()
     ft.start()
 
