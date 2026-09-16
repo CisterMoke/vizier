@@ -24,3 +24,5 @@ skills-lock.json
 __pycache__
 *.pyc
 *.egg-info
+
+todo.txt

@@ -24,7 +24,7 @@ from vizier_ai.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_
 from vizier_ai.parser import parse_data
 
 # Load .env file before reading any env vars
-load_dotenv()
+load_dotenv(Path(__file__).parents[1] / ".env")
 
 app = FastAPI(title="Vizier AI LLM Proxy")
 
@@ -233,10 +233,7 @@ async def edit_chart(request: EditChartRequest) -> dict:
     rows = _get_session_rows(session)
 
     if not rows:
-        rows = generate_mock_rows(
-            {"dataProfile": {"columns": []}},
-            seed=1337,
-        )
+        rows = generate_mock_rows(None, seed=1337)
 
     chart_spec = {"mode": "recipe", "traces": request.traces}
     insight = {"title": "Custom chart", "chartSpec": chart_spec}

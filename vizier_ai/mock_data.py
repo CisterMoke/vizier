@@ -5,6 +5,7 @@ Uses the same Linear Congruential Generator algorithm as the frontend.
 """
 
 import math
+import re
 from typing import Any
 
 MOCK_ROW_COUNT = 200
@@ -82,17 +83,34 @@ def _generate_value(spec: dict, index: int, random) -> Any:
     return None
 
 
+_BRACKET_KEY = re.compile(r"^\$\['(.+)'\]$")
+
+
 def _json_path_to_key(json_path: str) -> str:
+    """Convert a jsonPath string to the plain dict key it accesses.
+
+    Handles both dot notation (``$.county`` → ``county``) and bracket
+    notation (``$['revenue.usd']`` → ``revenue.usd``).
+    """
+    m = _BRACKET_KEY.match(json_path)
+    if m:
+        return m.group(1)
     return json_path.lstrip("$.")
 
 
-def generate_mock_rows(insight: dict, seed: int = 1337) -> list[dict]:
-    """Generate mock data rows from an insight's dataProfile."""
-    profile = insight.get("dataProfile")
-    if not profile:
+def generate_mock_rows(data_profile: dict | None, seed: int = 1337) -> list[dict]:
+    """Generate deterministic mock data rows from a dataProfile dict.
+
+    Args:
+        data_profile: A dict with a "columns" key, where each column has
+            a "name" (jsonPath string) and a "generator" spec. Accepts
+            None or an empty profile (returns empty list).
+        seed: Random seed for reproducible output.
+    """
+    if not data_profile:
         return []
 
-    columns = profile.get("columns", [])
+    columns = data_profile.get("columns", [])
     if not columns:
         return []
 

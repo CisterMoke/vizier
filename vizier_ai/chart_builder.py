@@ -4,10 +4,12 @@ Resolves JSONPath, applies filters and aggregation, and builds
 Plotly-compatible trace and layout dicts for the frontend to render.
 """
 
-import math
+import re
 from typing import Any
 
 from jsonpath import search as jsonpath_search
+
+from vizier_ai.models.insights import Insight, TraceFilter, TraceSpec
 
 FONT_COLOR = "#e2e8f0"
 GRID_COLOR = "rgba(148, 163, 184, 0.15)"
@@ -44,16 +46,84 @@ def _to_number(value: Any) -> float:
     return 0.0
 
 
+_SAFE_SEGMENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _escape_jsonpath_segment(segment: str) -> str:
+    """Return a safe JSONPath representation of a single path segment.
+
+    Simple identifiers (letters, digits, underscore) are returned as-is.
+    Anything else is wrapped in single-quoted bracket notation: ``['segment']``.
+    """
+    if _SAFE_SEGMENT.match(segment):
+        return segment
+    return f"['{segment}']"
+
+
+def _safe_jsonpath(path: str, row: dict) -> list:
+    """Resolve a JSONPath against a row, handling field names with reserved characters.
+
+    The jsonpath-python library treats ``.`` as a path separator, so a field
+    named ``revenue.usd`` accessed via ``$.revenue.usd`` is interpreted as
+    nested access (``row['revenue']['usd']``) rather than a flat key.
+
+    This function tries the path as-is first. If no match is found, it
+    progressively merges dot-separated segments from the end and wraps them
+    in bracket notation until a match is found or all options are exhausted.
+    """
+    if path.startswith("$"):
+        rest = path[1:]
+        if rest.startswith("."):
+            rest = rest[1:]
+    else:
+        rest = path
+
+    if not rest:
+        return jsonpath_search(path, row) if path.startswith("$") else jsonpath_search(f"$.{path}", row)
+
+    full_path = path if path.startswith("$") else f"$.{path}"
+    result = jsonpath_search(full_path, row)
+    if result:
+        return result
+
+    segments = rest.split(".")
+    if len(segments) == 1:
+        escaped = _escape_jsonpath_segment(segments[0])
+        if escaped != segments[0]:
+            return jsonpath_search(f"${escaped}" if escaped.startswith("[") else f"$.{escaped}", row)
+        return result
+
+    for merge_start in range(len(segments) - 1, -1, -1):
+        merged_key = ".".join(segments[merge_start:])
+        prefix_segments = segments[:merge_start]
+
+        safe_path = "$"
+        for seg in prefix_segments:
+            escaped = _escape_jsonpath_segment(seg)
+            if escaped.startswith("["):
+                safe_path += escaped
+            else:
+                safe_path += f".{escaped}"
+        safe_path += _escape_jsonpath_segment(merged_key)
+
+        result = jsonpath_search(safe_path, row)
+        if result:
+            return result
+
+    return []
+
+
 def _to_axis_label(json_path: str) -> str:
-    parts = json_path.lstrip("$.").split(".")
-    return parts[-1] if parts else json_path
+    label = json_path.lstrip("$").lstrip(".")
+    if not label:
+        return json_path
+    return label.split(".")[-1]
 
 
 def _resolve_values(rows: list[dict], json_path: str) -> list:
-    path = json_path if json_path.startswith("$") else f"$.{json_path}"
     result = []
     for row in rows:
-        matches = jsonpath_search(path, row)
+        matches = _safe_jsonpath(json_path, row)
         result.append(matches[0] if matches else None)
     return result
 
@@ -128,8 +198,8 @@ def _matches_filter(value: Any, filter_spec: dict) -> bool:
     return True
 
 
-def _filter_dataset(rows: list[dict], filter_spec: dict) -> list[dict]:
-    field = filter_spec.get("field", "")
+def _filter_dataset(rows: list[dict], filter_spec: TraceFilter) -> list[dict]:
+    field = filter_spec.field
     field_values = _resolve_values(rows, field)
     return [
         rows[i] for i in range(len(field_values))
@@ -164,30 +234,35 @@ def _dark_axes(x_label: str = "", y_label: str = "") -> dict:
     }
 
 
-def build_trace(trace_spec: dict, rows: list[dict], color_index: int) -> dict:
+def build_trace(
+        trace_spec: TraceSpec,
+        rows: list[dict],
+        color_index: int,
+        y_index: int,
+    ) -> dict:
     color = TRACE_COLORS[color_index % len(TRACE_COLORS)]
 
     filtered = rows
-    if trace_spec.get("filter"):
-        filtered = _filter_dataset(rows, trace_spec["filter"])
+    if trace_spec.filter:
+        filtered = _filter_dataset(rows, trace_spec.filter)
 
-    x = [_to_datum(v) for v in _resolve_values(filtered, trace_spec["xAxis"])]
-    y = [_to_datum(v) for v in _resolve_values(filtered, trace_spec["yAxis"])]
+    x = [_to_datum(v) for v in _resolve_values(filtered, trace_spec.x_axis)]
+    y = [_to_datum(v) for v in _resolve_values(filtered, trace_spec.y_axis)]
     z = (
-        [_to_number(v) for v in _resolve_values(filtered, trace_spec["zAxis"])]
-        if trace_spec.get("zAxis")
+        [_to_number(v) for v in _resolve_values(filtered, trace_spec.z_axis)]
+        if trace_spec.z_axis
         else None
     )
 
-    if trace_spec.get("aggregation"):
-        x, y = _aggregate(x, y, trace_spec["aggregation"])
+    if trace_spec.aggregation:
+        x, y = _aggregate(x, y, trace_spec.aggregation)
 
     trace: dict = {}
-    name = trace_spec.get("name")
+    name = trace_spec.name
     if name:
         trace["name"] = name
 
-    chart_type = trace_spec.get("chartType", "bar")
+    chart_type = trace_spec.chart_type
 
     if chart_type == "bar":
         trace.update({"type": "bar", "x": x, "y": y, "marker": {"color": color}})
@@ -216,15 +291,15 @@ def build_trace(trace_spec: dict, rows: list[dict], color_index: int) -> dict:
     elif chart_type == "geomap":
         trace.update({
             "type": "scattergeo", "mode": "markers",
-            "lon": [_to_number(v) for v in _resolve_values(filtered, trace_spec["xAxis"])],
-            "lat": [_to_number(v) for v in _resolve_values(filtered, trace_spec["yAxis"])],
+            "lon": [_to_number(v) for v in _resolve_values(filtered, trace_spec.x_axis)],
+            "lat": [_to_number(v) for v in _resolve_values(filtered, trace_spec.y_axis)],
         })
         if z:
             trace["marker"] = {
                 "size": 8, "color": z, "colorscale": "Viridis", "showscale": True,
                 "colorbar": {
                     "title": {
-                        "text": _to_axis_label(trace_spec["zAxis"]) if trace_spec.get("zAxis") else "",
+                        "text": _to_axis_label(trace_spec.z_axis) if trace_spec.z_axis else "",
                         "font": {"color": FONT_COLOR},
                     },
                     "tickfont": {"color": FONT_COLOR},
@@ -233,21 +308,21 @@ def build_trace(trace_spec: dict, rows: list[dict], color_index: int) -> dict:
         else:
             trace["marker"] = {"size": 8, "color": color}
 
-    if trace_spec.get("yaxis2"):
-        trace["yaxis"] = trace_spec["yaxis2"]
+    if y_index > 1:
+        trace["yaxis"] = f"y{y_index}"
 
     return trace
 
 
-def build_layout(title: str, trace_specs: list[dict]) -> dict:
+def build_layout(title: str, trace_specs: list[TraceSpec]) -> dict:
     layout = _dark_layout(title)
 
-    has_geomap = any(t.get("chartType") == "geomap" for t in trace_specs)
-    has_pie = any(t.get("chartType") == "pie" for t in trace_specs)
+    has_geomap = any(t.chart_type == "geomap" for t in trace_specs)
+    has_pie = any(t.chart_type == "pie" for t in trace_specs)
 
     if not has_geomap and not has_pie:
-        x_label = trace_specs[0].get("xAxis", "") if trace_specs else ""
-        y_label = trace_specs[0].get("yAxis", "") if trace_specs else ""
+        x_label = trace_specs[0].x_axis if trace_specs else ""
+        y_label = trace_specs[0].y_axis if trace_specs else ""
         layout.update(_dark_axes(_to_axis_label(x_label), _to_axis_label(y_label)))
 
     if has_geomap:
@@ -261,14 +336,14 @@ def build_layout(title: str, trace_specs: list[dict]) -> dict:
             "showframe": False,
         }
 
-    bar_count = sum(1 for t in trace_specs if t.get("chartType") == "bar")
+    bar_count = sum(1 for t in trace_specs if t.chart_type == "bar")
     if bar_count > 1:
         layout["barmode"] = "group"
 
-    has_y2 = any(t.get("yaxis2") for t in trace_specs)
-    if has_y2:
-        layout["yaxis2"] = {
-            "title": {"text": "Secondary", "font": {"color": FONT_COLOR}},
+    for i in range(1, len(trace_specs)):
+        spec = trace_specs[i]
+        layout[f"yaxis{i+1}"] = {
+            "title": {"text": spec.y_axis, "font": {"color": FONT_COLOR}},
             "side": "right", "overlaying": "y",
             "color": AXIS_COLOR, "gridcolor": GRID_COLOR, "zerolinecolor": GRID_COLOR,
         }
@@ -276,23 +351,15 @@ def build_layout(title: str, trace_specs: list[dict]) -> dict:
     return layout
 
 
-def build_plotly_spec(insight: dict, rows: list[dict]) -> dict:
+def build_plotly_spec(insight: Insight, rows: list[dict]) -> dict:
     """Build a full Plotly spec {data, layout} from an insight and data rows."""
-    chart_spec = insight.get("chartSpec", {})
-    mode = chart_spec.get("mode", "recipe")
-
-    if mode == "custom":
-        return {
-            "data": chart_spec.get("plotlyData", []),
-            "layout": {**_dark_layout(insight.get("title", "")),
-                       **(chart_spec.get("plotlyLayout") or {})},
-        }
-
-    traces = chart_spec.get("traces", [])
+    chart_spec = insight.chart_spec
+    traces = chart_spec.traces
+    title = insight.metadata.title
     if not traces:
-        return {"data": [], "layout": _dark_layout(insight.get("title", ""))}
+        return {"data": [], "layout": _dark_layout(title)}
 
-    plotly_traces = [build_trace(t, rows, i) for i, t in enumerate(traces)]
-    layout = build_layout(insight.get("title", ""), traces)
+    plotly_traces = [build_trace(t, rows, i, i+1) for i, t in enumerate(traces)]
+    layout = build_layout(title, traces)
 
     return {"data": plotly_traces, "layout": layout}

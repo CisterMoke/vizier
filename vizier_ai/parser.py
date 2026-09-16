@@ -30,8 +30,7 @@ def parse_csv(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
 def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
     """Parse JSON array (preserving nested structure for JSONPath) using pandas."""
     if isinstance(source, Path):
-        with open(source, "r") as f:
-            parsed = json.load(f)
+        parsed = json.loads(source.read_text())
     else:
         parsed = json.loads(source)
 

@@ -26,8 +26,9 @@ from vizier_ai.core import (
     call_llm,
     fetch_rest_data,
     fetch_sql_data,
-    DEFAULT_MAP_SCHEMA_PROMPT,
-    DEFAULT_INSIGHT_PROMPT,
+    DEFAULT_SCHEMA_SYSTEM_PROMPT,
+    DEFAULT_INSIGHT_SYSTEM_PROMPT,
+    DEFAULT_DATA_PROFILE_SYSTEM_PROMPT,
 )
 from vizier_ai.chart_builder import build_plotly_spec
 from vizier_ai.mock_data import generate_mock_rows
@@ -41,6 +42,7 @@ __all__ = [
     "build_plotly_spec",
     "generate_mock_rows",
     "parse_data",
-    "DEFAULT_MAP_SCHEMA_PROMPT",
-    "DEFAULT_INSIGHT_PROMPT",
+    "DEFAULT_SCHEMA_SYSTEM_PROMPT",
+    "DEFAULT_INSIGHT_SYSTEM_PROMPT",
+    "DEFAULT_DATA_PROFILE_SYSTEM_PROMPT",
 ]
