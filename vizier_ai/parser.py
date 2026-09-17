@@ -11,9 +11,6 @@ from typing import Any
 
 import pandas as pd
 
-MAX_ROWS = 5000  # Safety limit: only parse first 5000 rows
-
-
 def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
     """Convert a pandas DataFrame to the standard RawDataResult dict."""
     records = json.loads(df.to_json(orient="records", force_ascii=False))
@@ -21,13 +18,13 @@ def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
     return {"format": fmt, "columns": columns, "rows": records, "rowCount": len(records)}
 
 
-def parse_csv(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
+def parse_csv(source: str | Path, max_rows: int = None) -> dict[str, Any]:
     """Parse CSV from a file path or raw text using pandas."""
     df = pd.read_csv(source, nrows=max_rows)
     return _df_to_result(df, "csv")
 
 
-def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
+def parse_json(source: str | Path, max_rows: int = None) -> dict[str, Any]:
     """Parse JSON array (preserving nested structure for JSONPath) using pandas."""
     if isinstance(source, Path):
         parsed = json.loads(source.read_text())
@@ -35,7 +32,8 @@ def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
         parsed = json.loads(source)
 
     arr = parsed if isinstance(parsed, list) else [parsed]
-    arr = arr[:max_rows]  # Limit rows before DataFrame creation
+    if max_rows is not None:
+        arr = arr[:max_rows]
 
     if not arr:
         return {"format": "json", "columns": [], "rows": [], "rowCount": 0}
@@ -50,13 +48,13 @@ def parse_json(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
     return {"format": "json", "columns": columns, "rows": records, "rowCount": len(records)}
 
 
-def parse_jsonl(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
+def parse_jsonl(source: str | Path, max_rows: int = None) -> dict[str, Any]:
     """Parse JSONL (one JSON object per line) using pandas."""
     if isinstance(source, Path):
         with open(source, "r") as f:
             lines = []
             for i, line in enumerate(f):
-                if i >= max_rows:
+                if max_rows is not None and i >= max_rows:
                     break
                 stripped = line.strip()
                 if stripped:
@@ -64,7 +62,9 @@ def parse_jsonl(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
         records = lines
     else:
         all_lines = [line.strip() for line in source.strip().split("\n") if line.strip()]
-        records = [json.loads(line) for line in all_lines[:max_rows]]
+        if max_rows is not None:
+            all_lines = all_lines[:max_rows]
+        records = [json.loads(line) for line in all_lines]
 
     if not records:
         return {"format": "jsonl", "columns": [], "rows": [], "rowCount": 0}
@@ -73,7 +73,7 @@ def parse_jsonl(source: str | Path, max_rows: int = MAX_ROWS) -> dict[str, Any]:
     return _df_to_result(df, "jsonl")
 
 
-def parse_data(source: str | Path, format_hint: str = "csv", max_rows: int = MAX_ROWS) -> dict[str, Any]:
+def parse_data(source: str | Path, format_hint: str = "csv", max_rows: int = None) -> dict[str, Any]:
     """Parse raw data from a file path or text using the specified format.
 
     Args:

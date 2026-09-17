@@ -7,7 +7,6 @@ storage, rate limiting, file upload handling, and static frontend serving.
 import os
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,13 +14,20 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
 
 sys.path.append(str(Path(__file__).parents[2]))
 
-from vizier_ai.ui.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 from vizier_ai.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_plotly_spec, generate_mock_rows
+from vizier_ai.models.insights import ChartSpec
 from vizier_ai.parser import parse_data
+from vizier_ai.ui.models.api import (
+    GenerateRequest,
+    EditChartRequest,
+    RegenerateRequest,
+    InsightsResponse
+)
+from vizier_ai.ui.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
+from vizier_ai.ui.sessions import _create_session, _get_session, _get_session_rows
 
 # Load .env file before reading any env vars
 load_dotenv(Path(__file__).parents[1] / ".env")
@@ -37,7 +43,10 @@ app.add_middleware(
 
 # --- File upload size limit ---
 
-MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024
+MAX_FILE_SIZE = float(os.getenv("MAX_FILE_SIZE_MB", "0")) * 1024 ** 2
+MAX_ROWS = os.getenv("MAX_ROWS")
+if MAX_ROWS is not None:
+    MAX_ROWS = int(MAX_ROWS)
 
 # --- Rate limiting ---
 
@@ -98,60 +107,10 @@ async def rate_limit_middleware(request: Request, call_next):
     response.headers["X-RateLimit-Global-Limit"] = str(_global_config.max_requests)
     return response
 
-
-# --- Session storage (in-memory, per-session data retention) ---
-
-_sessions: dict[str, dict] = {}
-
-
-def _create_session(real_data: dict | None, schema_text: str) -> str:
-    session_id = uuid.uuid4().hex
-    _sessions[session_id] = {
-        "real_data": real_data,
-        "schema_text": schema_text,
-    }
-    return session_id
-
-
-def _get_session(session_id: str) -> dict | None:
-    return _sessions.get(session_id)
-
-
-def _get_session_rows(session: dict) -> list[dict]:
-    real_data = session.get("real_data")
-    if real_data and real_data.get("rowCount", 0) > 0:
-        return real_data.get("rows", [])
-    return []
-
-
-# --- Request models ---
-
-class GenerateRequest(BaseModel):
-    schema_text: str = Field(alias="schemaText")
-    data_source_mode: str = Field(default="none", alias="dataSourceMode")
-    rest_method: str | None = Field(default=None, alias="restMethod")
-    rest_url: str | None = Field(default=None, alias="restUrl")
-    rest_headers: str | None = Field(default=None, alias="restHeaders")
-    rest_body: str | None = Field(default=None, alias="restBody")
-    sql_connection: str | None = Field(default=None, alias="sqlConnection")
-    sql_query: str | None = Field(default=None, alias="sqlQuery")
-
-    model_config = {"populate_by_name": True}
-
-
-class RegenerateRequest(BaseModel):
-    session_id: str = Field(alias="sessionId")
-
-
-class EditChartRequest(BaseModel):
-    session_id: str = Field(alias="sessionId")
-    traces: list[dict] = []
-
-
 # --- Routes ---
 
 @app.post("/api/generate")
-async def generate(request: GenerateRequest) -> dict:
+async def generate(request: GenerateRequest) -> InsightsResponse:
     """Full pipeline for schema-only, REST API, or SQL data sources."""
     real_data: dict | None = None
 
@@ -171,9 +130,12 @@ async def generate(request: GenerateRequest) -> dict:
     result = await run_pipeline(request.schema_text, real_data)
 
     session_id = _create_session(real_data, request.schema_text)
-    result["sessionId"] = session_id
+    response = InsightsResponse.model_validate(
+        **result.model_dump(),
+        session_id = session_id
+    )
 
-    return result
+    return response
 
 
 @app.post("/api/generate-upload")
@@ -181,13 +143,13 @@ async def generate_upload(
     schemaText: str = Form(...),
     file: UploadFile = File(...),
     fileFormat: str = Form(default="csv"),
-) -> dict:
+) -> InsightsResponse:
     """Full pipeline with file upload via multipart form data."""
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
+    if MAX_FILE_SIZE and file.size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large. Max {MAX_FILE_SIZE // (1024 * 1024)} MB. Got {len(content) // (1024 * 1024)} MB.",
+            detail=f"File too large. Max {MAX_FILE_SIZE // (1024 ** 2):.2f} MB. Got {file.size // (1024 ** 2):.2f} MB.",
         )
 
     with tempfile.NamedTemporaryFile(mode="wb", suffix=f".{fileFormat}", delete=False) as tmp:
@@ -202,13 +164,16 @@ async def generate_upload(
     result = await run_pipeline(schemaText, real_data)
 
     session_id = _create_session(real_data, schemaText)
-    result["sessionId"] = session_id
+    response = InsightsResponse.model_validate(
+        **result.model_dump(),
+        session_id = session_id
+    )
 
-    return result
+    return response
 
 
 @app.post("/api/regenerate")
-async def regenerate(request: RegenerateRequest) -> dict:
+async def regenerate(request: RegenerateRequest) -> InsightsResponse:
     """Regenerate insights using stored session data (no re-upload)."""
     session = _get_session(request.session_id)
     if not session:
@@ -218,9 +183,12 @@ async def regenerate(request: RegenerateRequest) -> dict:
     real_data = session.get("real_data")
 
     result = await run_pipeline(schema_text, real_data)
-    result["sessionId"] = request.session_id
+    response = InsightsResponse.model_validate(
+        **result.model_dump(),
+        session_id = request.session_id
+    )
 
-    return result
+    return response
 
 
 @app.post("/api/edit-chart")
@@ -235,7 +203,7 @@ async def edit_chart(request: EditChartRequest) -> dict:
     if not rows:
         rows = generate_mock_rows(None, seed=1337)
 
-    chart_spec = {"mode": "recipe", "traces": request.traces}
+    chart_spec = ChartSpec(traces=request.traces)
     insight = {"title": "Custom chart", "chartSpec": chart_spec}
     plotly_spec = build_plotly_spec(insight, rows)
 

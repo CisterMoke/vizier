@@ -10,6 +10,7 @@ defaults. Prompts are overridable constants.
 """
 
 import aiohttp
+import asyncio
 import json
 import os
 import pandas as pd
@@ -140,10 +141,11 @@ async def run_pipeline(
 
 
     real_rows = real_data.get("rows", [])
+    use_mock = len(real_rows) == 0
     llm_kwargs = {"model": model, "api_key": api_key}
 
     schema_prompt = f"Analyze this data description and extract the dataset schema:\n\n{schema_text}"
-    if real_rows:
+    if not use_mock:
         schema_prompt += f"\nHere are some data samples:\n{'\n'.join(real_rows[:3])}"
 
     schema = await call_llm(
@@ -155,25 +157,30 @@ async def run_pipeline(
 
     insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}"
 
-    insights_envelope = await call_llm(
+    insights_task = call_llm(
         insight_system,
         insight_prompt,
         InsightCandidates,
         **llm_kwargs,
     )
-
-    if not real_rows:
-        profile_output = await call_llm(
+    tasks = [insights_task]
+    if use_mock:
+        profile_task = call_llm(
             profile_system,
             f"Given this dataset schema, generate a dataProfile for mock data generation:\n\n{json.dumps(schema)}",
             DataProfile,
             **llm_kwargs,
         )
+        tasks.append(profile_task)
 
-
+    if not real_rows:
+        insights_output, profile_output = await asyncio.gather(*tasks)
+    else:
+        insights_output = await insights_task
+    
     insights_list = []
-    for i, candidate in enumerate(insights_envelope.candidates):
-        rows = real_rows if real_rows else generate_mock_rows(profile_output, seed=1337 + i)
+    for i, candidate in enumerate(insights_output.candidates):
+        rows = real_rows if not use_mock else generate_mock_rows(profile_output, seed=1337 + i)
 
         insight = Insight.from_candidate(candidate)
         plotly_spec = build_plotly_spec(insight, rows)
