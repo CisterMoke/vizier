@@ -1,4 +1,4 @@
-import { Button, Card, Group, Stack, Text, Title, List, Select, Modal, Checkbox } from '@mantine/core'
+import { Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox } from '@mantine/core'
 import { useState, useCallback } from 'preact/hooks'
 import type { InsightCandidate } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
@@ -49,8 +49,8 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
     return null
   }
 
-  const activePlotlyData = editedPlotlyData ?? insight.plotlyData
-  const activePlotlyLayout = editedPlotlyLayout ?? insight.plotlyLayout
+  const activePlotlyData = editedPlotlyData ?? insight.chart_spec.plotlyData
+  const activePlotlyLayout = editedPlotlyLayout ?? insight.chart_spec.plotlyLayout
 
   const handleChartTypeChange = async (newType: string | null) => {
     if (!newType || !sessionId || !insight) return
@@ -87,7 +87,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
           chartType: 'bar',
           xAxis: '$.x',
           yAxis: '$.y',
-          name: selectedInsight?.title ?? id,
+          name: selectedInsight?.metadata.title ?? id,
         }
       })
       const result = await editChart(sessionId, traces)
@@ -153,23 +153,12 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
         className="bg-gray-900/50 backdrop-blur-sm shadow-lg border-gray-700/50"
       >
         <Stack gap="md">
-          <Title order={4}>{insight.title}</Title>
-          <Text c="dimmed" size="sm">{insight.summary}</Text>
+          <Title order={4}>{insight.metadata.title}</Title>
+          <Text c="dimmed" size="sm">{insight.metadata.summary}</Text>
 
           <Text size="sm">
-            <strong>Key idea:</strong> {insight.keyIdea}
+            <strong>Key idea:</strong> {insight.metadata.keyIdea}
           </Text>
-          <Text size="sm">
-            <strong>Metric:</strong> {insight.metricDescription}
-          </Text>
-
-          {insight.assumptions.length > 0 ? (
-            <List size="sm" withPadding>
-              {insight.assumptions.map((assumption) => (
-                <List.Item key={assumption}>{assumption}</List.Item>
-              ))}
-            </List>
-          ) : null}
 
           {sessionId ? (
             <Select
@@ -256,7 +245,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
             {insights.map((i) => (
               <Checkbox
                 key={i.id}
-                label={i.title}
+                label={i.metadata.title}
                 checked={combineSelection.has(i.id)}
                 onChange={() => toggleCombineSelection(i.id)}
               />

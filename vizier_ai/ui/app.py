@@ -131,8 +131,11 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
 
     session_id = _create_session(real_data, request.schema_text)
     response = InsightsResponse.model_validate(
-        **result.model_dump(),
-        session_id = session_id
+        dict(
+            **result.model_dump(),
+            session_id = session_id,
+        ),
+        by_name=True,
     )
 
     return response
@@ -165,8 +168,11 @@ async def generate_upload(
 
     session_id = _create_session(real_data, schemaText)
     response = InsightsResponse.model_validate(
-        **result.model_dump(),
-        session_id = session_id
+        dict(
+            **result.model_dump(),
+            session_id = session_id,
+        ),
+        by_name=True,
     )
 
     return response
@@ -184,8 +190,11 @@ async def regenerate(request: RegenerateRequest) -> InsightsResponse:
 
     result = await run_pipeline(schema_text, real_data)
     response = InsightsResponse.model_validate(
-        **result.model_dump(),
-        session_id = request.session_id
+        dict(
+            **result.model_dump(),
+            session_id = request.session_id,
+        ),
+        by_name=True,
     )
 
     return response
@@ -216,6 +225,14 @@ async def edit_chart(request: EditChartRequest) -> dict:
 @app.get("/api/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+async def get_config() -> dict:
+    return {
+        "maxFileSize": MAX_FILE_SIZE,
+        "maxRows": MAX_ROWS,
+    }
 
 
 # --- Static frontend serving ---

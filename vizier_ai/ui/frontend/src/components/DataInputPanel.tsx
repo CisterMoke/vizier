@@ -1,5 +1,6 @@
 import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Title, Group } from '@mantine/core'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
+import { fetchConfig, type ServerConfig } from '../services/apiClient'
 
 export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
 export type FileFormat = 'csv' | 'json' | 'jsonl'
@@ -33,8 +34,6 @@ interface DataInputPanelProps {
   hasInsights?: boolean
 }
 
-const MAX_FILE_SIZE_MB = (import.meta.env.VITE_MAX_FILE_SIZE_MB as number) ?? 10
-
 export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
@@ -43,6 +42,14 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
   const [restConfig, setRestConfig] = useState<RestApiConfig>({ method: 'GET', url: '', headers: '', body: '' })
   const [sqlConfig, setSqlConfig] = useState<SqlConfig>({ connectionString: '', query: '' })
   const [fileError, setFileError] = useState<string | null>(null)
+  const [config, setConfig] = useState<ServerConfig | null>(null)
+
+  useEffect(() => {
+    fetchConfig().then(setConfig).catch(() => {})
+  }, [])
+
+  const maxFileSizeBytes = config?.maxFileSize ?? 0
+  const maxRows = config?.maxRows ?? null
 
   const handleFileUpload = (uploadedFile: File | null) => {
     setFileError(null)
@@ -52,9 +59,10 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
       return
     }
 
-    const sizeMB = uploadedFile.size / (1024 * 1024)
-    if (sizeMB > MAX_FILE_SIZE_MB) {
-      setFileError(`File too large (${sizeMB.toFixed(1)} MB). Max ${MAX_FILE_SIZE_MB} MB.`)
+    if (maxFileSizeBytes > 0 && uploadedFile.size > maxFileSizeBytes) {
+      const sizeMB = uploadedFile.size / (1024 * 1024)
+      const maxMB = maxFileSizeBytes / (1024 * 1024)
+      setFileError(`File too large (${sizeMB.toFixed(1)} MB). Max ${maxMB.toFixed(0)} MB.`)
       setFile(null)
       return
     }
@@ -144,7 +152,12 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
                   <Text c="red" size="sm">{fileError}</Text>
                 ) : null}
                 <Text c="dimmed" size="xs">
-                  Max {MAX_FILE_SIZE_MB} MB. Large files are automatically sampled to the first 5000 rows.
+                  {maxFileSizeBytes > 0
+                    ? `Max ${(maxFileSizeBytes / (1024 * 1024)).toFixed(0)} MB. `
+                    : ''}
+                  {maxRows !== null
+                    ? `Large files are automatically sampled to the first ${maxRows} rows.`
+                    : ''}
                 </Text>
               </Stack>
             ) : null}

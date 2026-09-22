@@ -1,4 +1,5 @@
 .agents/
+.config/
 .worktrees/
 .superpowers/
 docs/

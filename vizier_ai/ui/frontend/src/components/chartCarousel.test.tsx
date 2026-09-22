@@ -16,23 +16,31 @@ vi.mock('../services/apiClient', () => ({
 const insights: InsightCandidate[] = [
   {
     id: 'ins-1',
-    title: 'Revenue by category',
-    summary: 'Show revenue by category as a bar chart.',
-    keyIdea: 'Revenue varies by category.',
-    metricDescription: 'Sum of revenue by category.',
-    assumptions: ['Revenue values are numeric and complete.'],
-    plotlyData: [{ type: 'bar', x: ['A', 'B'], y: [120, 95] }],
-    plotlyLayout: { title: { text: 'Revenue' } }
+    metadata: {
+      title: 'Revenue by category',
+      summary: 'Show revenue by category as a bar chart.',
+      keyIdea: 'Revenue varies by category.',
+      description: null,
+    },
+    chart_spec: {
+      traces: [],
+      plotlyData: [{ type: 'bar', x: ['A', 'B'], y: [120, 95] }],
+      plotlyLayout: { title: { text: 'Revenue' } }
+    }
   },
   {
     id: 'ins-2',
-    title: 'Order volume trend',
-    summary: 'Weekly order count over time.',
-    keyIdea: 'Order volume shows seasonal patterns.',
-    metricDescription: 'Weekly order count.',
-    assumptions: ['Weeks are sequential.'],
-    plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2], y: [150, 220] }],
-    plotlyLayout: { title: { text: 'Volume' } }
+    metadata: {
+      title: 'Order volume trend',
+      summary: 'Weekly order count over time.',
+      keyIdea: 'Order volume shows seasonal patterns.',
+      description: null,
+    },
+    chart_spec: {
+      traces: [],
+      plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2], y: [150, 220] }],
+      plotlyLayout: { title: { text: 'Volume' } }
+    }
   }
 ]
 

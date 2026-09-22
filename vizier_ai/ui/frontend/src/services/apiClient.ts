@@ -1,5 +1,5 @@
 import type { InsightCandidate } from '../domain/types'
-import { parseInsightEnvelope } from '../domain/schemas'
+import { parseInsights } from '../domain/schemas'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
@@ -7,14 +7,37 @@ export interface GenerateResponse {
   insights: InsightCandidate[]
 }
 
+export interface ServerConfig {
+  maxFileSize: number
+  maxRows: number | null
+}
+
 const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000'
+
+export const fetchConfig = async (backendUrl?: string): Promise<ServerConfig> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  const response = await fetch(`${baseUrl}/api/config`)
+
+  if (!response.ok) {
+    throw new Error(`Backend error ${response.status}: ${await response.text()}`)
+  }
+
+  const raw = await response.json()
+  return {
+    maxFileSize: raw.maxFileSize,
+    maxRows: raw.maxRows ?? null,
+  }
+}
 
 async function parseResponse(response: Response): Promise<GenerateResponse> {
   const raw = await response.json()
 
+  const parsed = parseInsights(raw)
+
   return {
     sessionId: raw.sessionId ?? '',
-    insights: parseInsightEnvelope(raw.insights).insights,
+    insights: parsed.insights,
   }
 }
 
@@ -78,7 +101,8 @@ export const regenerate = async (sessionId: string, backendUrl?: string): Promis
   }
 
   const raw = await response.json()
-  return parseInsightEnvelope(raw.insights).insights
+  const parsed = parseInsights(raw)
+  return parsed.insights
 }
 
 export interface TraceSpec {

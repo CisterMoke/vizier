@@ -3,13 +3,17 @@ import type { InsightCandidate } from '../domain/types'
 
 const mockInsight: InsightCandidate = {
   id: 'ins-1',
-  title: 'Revenue trend',
-  summary: 'Weekly revenue over time.',
-  keyIdea: 'Revenue increases over time.',
-  metricDescription: 'Weekly total revenue.',
-  assumptions: ['Revenue values are positive.'],
-  plotlyData: [],
-  plotlyLayout: {}
+  metadata: {
+    title: 'Revenue trend',
+    summary: 'Weekly revenue over time.',
+    keyIdea: 'Revenue increases over time.',
+    description: null,
+  },
+  chartSpec: {
+    traces: [],
+    plotlyData: [],
+    plotlyLayout: {}
+  }
 }
 
 it('workspaceStore exports useWorkspaceStore hook', () => {
@@ -18,7 +22,7 @@ it('workspaceStore exports useWorkspaceStore hook', () => {
 
 it('mockInsight has correct shape', () => {
   expect(mockInsight.id).toBe('ins-1')
-  expect(mockInsight.plotlyData).toEqual([])
-  expect(mockInsight.plotlyLayout).toEqual({})
-  expect(mockInsight.assumptions).toHaveLength(1)
+  expect(mockInsight.metadata.title).toBe('Revenue trend')
+  expect(mockInsight.chartSpec.plotlyData).toEqual([])
+  expect(mockInsight.chartSpec.plotlyLayout).toEqual({})
 })

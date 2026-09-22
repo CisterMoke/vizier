@@ -146,7 +146,7 @@ async def run_pipeline(
 
     schema_prompt = f"Analyze this data description and extract the dataset schema:\n\n{schema_text}"
     if not use_mock:
-        schema_prompt += f"\nHere are some data samples:\n{'\n'.join(real_rows[:3])}"
+        schema_prompt += f"\nHere are some data samples:\n{'\n'.join([json.dumps(row, ensure_ascii=False) for row in real_rows[:3]])}"
 
     schema = await call_llm(
         schema_system,
@@ -155,7 +155,7 @@ async def run_pipeline(
         **llm_kwargs,
     )
 
-    insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:\n\n{json.dumps(schema)}"
+    insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:\n\n{schema.model_dump_json()}"
 
     insights_task = call_llm(
         insight_system,
@@ -167,7 +167,7 @@ async def run_pipeline(
     if use_mock:
         profile_task = call_llm(
             profile_system,
-            f"Given this dataset schema, generate a dataProfile for mock data generation:\n\n{json.dumps(schema)}",
+            f"Given this dataset schema, generate a dataProfile for mock data generation:\n\n{schema.model_dump_json()}",
             DataProfile,
             **llm_kwargs,
         )
@@ -185,8 +185,7 @@ async def run_pipeline(
         insight = Insight.from_candidate(candidate)
         plotly_spec = build_plotly_spec(insight, rows)
         insight.chart_spec.plotlyData = plotly_spec["data"]
-        insight["plotlyLayout"] = plotly_spec["layout"]
+        insight.chart_spec.plotlyLayout = plotly_spec["layout"]
+        insights_list.append(insight)
 
-    return {
-        "insights": {"insights": insights_list},
-    }
+    return Insights(insights=insights_list)

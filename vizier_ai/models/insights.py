@@ -51,7 +51,7 @@ class Insight(BaseModel):
         insight = cls(
             id=candidate.id,
             metadata=candidate.metadata,
-            chart=ChartSpec(
+            chart_spec=ChartSpec(
                 traces=candidate.traces,
             )
         )
@@ -59,4 +59,4 @@ class Insight(BaseModel):
 
 
 class Insights(BaseModel):
-    Insights: list[Insight]
+    insights: list[Insight]

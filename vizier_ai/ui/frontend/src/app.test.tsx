@@ -11,6 +11,7 @@ vi.mock('./services/apiClient', () => ({
   callGenerate: (...args: unknown[]) => callGenerateMock(...args),
   regenerate: vi.fn(),
   editChart: vi.fn(),
+  fetchConfig: vi.fn().mockResolvedValue({ maxFileSize: null, maxRows: null }),
 }))
 
 import { App } from './app'
@@ -34,13 +35,17 @@ it('calls backend API on generate and renders chart cards', async () => {
     insights: [
       {
         id: 'insight-1',
-        title: 'Orders trend',
-        summary: 'Orders over time',
-        keyIdea: 'Orders climb weekly',
-        metricDescription: 'Weekly order count',
-        assumptions: ['created_at is present'],
-        plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2, 3], y: [10, 20, 30] }],
-        plotlyLayout: { title: { text: 'Orders trend' } }
+        metadata: {
+          title: 'Orders trend',
+          summary: 'Orders over time',
+          keyIdea: 'Orders climb weekly',
+          description: null,
+        },
+        chart_spec: {
+          traces: [],
+          plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2, 3], y: [10, 20, 30] }],
+          plotlyLayout: { title: { text: 'Orders trend' } }
+        }
       }
     ]
   })
