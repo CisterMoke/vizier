@@ -6,6 +6,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from vizier_ai.chart_builder import _resolve_values, build_plotly_spec
+from vizier_ai.models.insights import (
+    ChartSpec,
+    Insight,
+    InsightMetadata,
+    TraceFilter,
+    TraceSpec,
+)
+
+
+def make_insight(title: str, traces: list[TraceSpec]) -> Insight:
+    return Insight(
+        id="i1",
+        metadata=InsightMetadata(title=title, summary="S", keyIdea="K"),
+        chart_spec=ChartSpec(traces=traces),
+    )
 
 
 class TestResolveValuesEscaping:
@@ -89,21 +104,15 @@ class TestBuildPlotlySpecWithSpecialChars:
     """Test that build_plotly_spec works with field names containing reserved characters."""
 
     def test_bar_chart_with_dotted_field(self):
-        insight = {
-            "title": "Revenue by County",
-            "chartSpec": {
-                "mode": "recipe",
-                "traces": [
-                    {
-                        "chartType": "bar",
-                        "xAxis": "$.county",
-                        "yAxis": "$.revenue.usd",
-                        "aggregation": "sum",
-                        "name": "Revenue",
-                    }
-                ],
-            },
-        }
+        insight = make_insight("Revenue by County", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$.revenue.usd",
+                aggregation="sum",
+                name="Revenue",
+            ),
+        ])
         rows = [
             {"county": "King", "revenue.usd": 100},
             {"county": "King", "revenue.usd": 50},
@@ -118,26 +127,16 @@ class TestBuildPlotlySpecWithSpecialChars:
         assert trace["y"] == [150.0, 200.0]
 
     def test_filter_with_special_char_field(self):
-        insight = {
-            "title": "Filtered",
-            "chartSpec": {
-                "mode": "recipe",
-                "traces": [
-                    {
-                        "chartType": "bar",
-                        "xAxis": "$.county",
-                        "yAxis": "$.revenue.usd",
-                        "aggregation": "sum",
-                        "filter": {
-                            "field": "$.status.code",
-                            "op": "eq",
-                            "value": "active",
-                        },
-                        "name": "Active Revenue",
-                    }
-                ],
-            },
-        }
+        insight = make_insight("Filtered", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$.revenue.usd",
+                aggregation="sum",
+                filter=TraceFilter(field="$.status.code", op="eq", value="active"),
+                name="Active Revenue",
+            ),
+        ])
         rows = [
             {"county": "King", "revenue.usd": 100, "status.code": "active"},
             {"county": "King", "revenue.usd": 50, "status.code": "inactive"},

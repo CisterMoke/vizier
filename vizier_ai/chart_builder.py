@@ -171,9 +171,9 @@ def _aggregate(x: list, y: list, func: str) -> tuple[list, list]:
     return result_x, result_y
 
 
-def _matches_filter(value: Any, filter_spec: dict) -> bool:
-    op = filter_spec.get("op", "eq")
-    filter_value = filter_spec.get("value")
+def _matches_filter(value: Any, filter_spec: TraceFilter) -> bool:
+    op = filter_spec.op
+    filter_value = filter_spec.value
 
     if op == "eq":
         return str(value) == str(filter_value)

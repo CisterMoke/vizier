@@ -11,6 +11,21 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from vizier_ai.mock_data import generate_mock_rows
 from vizier_ai.chart_builder import build_plotly_spec
+from vizier_ai.models.insights import (
+    ChartSpec,
+    Insight,
+    InsightMetadata,
+    TraceFilter,
+    TraceSpec,
+)
+
+
+def make_insight(title: str, traces: list[TraceSpec]) -> Insight:
+    return Insight(
+        id="i1",
+        metadata=InsightMetadata(title=title, summary="S", keyIdea="K"),
+        chart_spec=ChartSpec(traces=traces),
+    )
 
 
 class TestEndToEndEscapedJsonPath:
@@ -24,21 +39,15 @@ class TestEndToEndEscapedJsonPath:
             {"county": "Pierce", "revenue.usd": 200},
         ]
 
-        insight = {
-            "title": "Revenue by County",
-            "chartSpec": {
-                "mode": "recipe",
-                "traces": [
-                    {
-                        "chartType": "bar",
-                        "xAxis": "$.county",
-                        "yAxis": "$['revenue.usd']",
-                        "aggregation": "sum",
-                        "name": "Revenue",
-                    }
-                ],
-            },
-        }
+        insight = make_insight("Revenue by County", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$['revenue.usd']",
+                aggregation="sum",
+                name="Revenue",
+            ),
+        ])
 
         spec = build_plotly_spec(insight, rows)
         trace = spec["data"][0]
@@ -54,21 +63,15 @@ class TestEndToEndEscapedJsonPath:
             ]
         }
 
-        insight = {
-            "title": "Test Chart",
-            "chartSpec": {
-                "mode": "recipe",
-                "traces": [
-                    {
-                        "chartType": "bar",
-                        "xAxis": "$.county",
-                        "yAxis": "$['revenue.usd']",
-                        "aggregation": "sum",
-                        "name": "Revenue",
-                    }
-                ],
-            },
-        }
+        insight = make_insight("Test Chart", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$['revenue.usd']",
+                aggregation="sum",
+                name="Revenue",
+            ),
+        ])
 
         mock_rows = generate_mock_rows(data_profile, seed=42)
         assert len(mock_rows) == 200
@@ -89,26 +92,16 @@ class TestEndToEndEscapedJsonPath:
             {"county": "Pierce", "revenue.usd": 200, "status.code": "active"},
         ]
 
-        insight = {
-            "title": "Active Revenue",
-            "chartSpec": {
-                "mode": "recipe",
-                "traces": [
-                    {
-                        "chartType": "bar",
-                        "xAxis": "$.county",
-                        "yAxis": "$['revenue.usd']",
-                        "aggregation": "sum",
-                        "filter": {
-                            "field": "$['status.code']",
-                            "op": "eq",
-                            "value": "active",
-                        },
-                        "name": "Active Revenue",
-                    }
-                ],
-            },
-        }
+        insight = make_insight("Active Revenue", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$['revenue.usd']",
+                aggregation="sum",
+                filter=TraceFilter(field="$['status.code']", op="eq", value="active"),
+                name="Active Revenue",
+            ),
+        ])
 
         spec = build_plotly_spec(insight, rows)
         trace = spec["data"][0]
