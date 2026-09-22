@@ -46,3 +46,32 @@ it('defaults missing optional fields', () => {
   expect(parsed.insights[0].chart_spec.plotlyData).toEqual([])
   expect(parsed.insights[0].chart_spec.plotlyLayout).toEqual({})
 })
+
+it('parses the mock seed when present', () => {
+  const parsed = parseInsights({
+    insights: [
+      {
+        id: 'ins-3',
+        metadata: { title: 'T', summary: 'S', keyIdea: 'K' },
+        chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} },
+        mock_seed: 1338
+      }
+    ]
+  })
+
+  expect(parsed.insights[0].mock_seed).toBe(1338)
+})
+
+it('parses insights without a mock seed', () => {
+  const parsed = parseInsights({
+    insights: [
+      {
+        id: 'ins-4',
+        metadata: { title: 'T', summary: 'S', keyIdea: 'K' },
+        chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} }
+      }
+    ]
+  })
+
+  expect(parsed.insights[0].mock_seed).toBeUndefined()
+})

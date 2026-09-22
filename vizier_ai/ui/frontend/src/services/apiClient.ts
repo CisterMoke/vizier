@@ -1,10 +1,13 @@
 import type { InsightCandidate } from '../domain/types'
 import { parseInsights } from '../domain/schemas'
+import type { BundleContext } from '../domain/bundle'
+import type { InsightConstraintsPayload } from '../domain/constraints'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
   sessionId: string
   insights: InsightCandidate[]
+  context: BundleContext | null
 }
 
 export interface ServerConfig {
@@ -13,6 +16,18 @@ export interface ServerConfig {
 }
 
 const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000'
+
+export function extractErrorMessage(status: number, text: string): string {
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed.detail === 'string') {
+      return parsed.detail
+    }
+  } catch {
+    return `Backend error ${status}: ${text}`
+  }
+  return `Backend error ${status}: ${text}`
+}
 
 export const fetchConfig = async (backendUrl?: string): Promise<ServerConfig> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
@@ -38,6 +53,10 @@ async function parseResponse(response: Response): Promise<GenerateResponse> {
   return {
     sessionId: raw.sessionId ?? '',
     insights: parsed.insights,
+    context: {
+      schema: raw.dataset_schema ?? null,
+      dataProfile: raw.data_profile ?? null
+    }
   }
 }
 
@@ -49,6 +68,9 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     formData.append('schemaText', request.schemaText)
     formData.append('file', request.dataSource.file)
     formData.append('fileFormat', request.dataSource.fileFormat ?? 'csv')
+    if (request.constraints) {
+      formData.append('constraints', JSON.stringify(request.constraints))
+    }
 
     const response = await fetch(`${baseUrl}/api/generate-upload`, {
       method: 'POST',
@@ -56,8 +78,7 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Backend error ${response.status}: ${errorText}`)
+      throw new Error(extractErrorMessage(response.status, await response.text()))
     }
 
     return parseResponse(response)
@@ -74,35 +95,63 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
       restHeaders: request.dataSource.rest?.headers,
       restBody: request.dataSource.rest?.body,
       sqlConnection: request.dataSource.sql?.connectionString,
-      sqlQuery: request.dataSource.sql?.query
+      sqlQuery: request.dataSource.sql?.query,
+      constraints: request.constraints
     })
   })
 
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Backend error ${response.status}: ${errorText}`)
+    throw new Error(extractErrorMessage(response.status, await response.text()))
   }
 
   return parseResponse(response)
 }
 
-export const regenerate = async (sessionId: string, backendUrl?: string): Promise<InsightCandidate[]> => {
+export const regenerate = async (
+  sessionId: string,
+  constraints?: InsightConstraintsPayload,
+  backendUrl?: string
+): Promise<GenerateResponse> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
 
   const response = await fetch(`${baseUrl}/api/regenerate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId })
+    body: JSON.stringify({ sessionId, constraints })
   })
 
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Backend error ${response.status}: ${errorText}`)
+    throw new Error(extractErrorMessage(response.status, await response.text()))
   }
 
-  const raw = await response.json()
-  const parsed = parseInsights(raw)
-  return parsed.insights
+  return parseResponse(response)
+}
+
+export const loadBundle = async (
+  bundle: File,
+  data?: File,
+  dataFormat: string = 'csv',
+  backendUrl?: string
+): Promise<GenerateResponse> => {
+  const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
+
+  const formData = new FormData()
+  formData.append('bundle', bundle)
+  formData.append('dataFormat', dataFormat)
+  if (data) {
+    formData.append('data', data)
+  }
+
+  const response = await fetch(`${baseUrl}/api/load-bundle`, {
+    method: 'POST',
+    body: formData
+  })
+
+  if (!response.ok) {
+    throw new Error(extractErrorMessage(response.status, await response.text()))
+  }
+
+  return parseResponse(response)
 }
 
 export interface TraceSpec {
@@ -130,8 +179,7 @@ export const editChart = async (
   })
 
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Backend error ${response.status}: ${errorText}`)
+    throw new Error(extractErrorMessage(response.status, await response.text()))
   }
 
   return await response.json()

@@ -22,22 +22,50 @@ from pydantic_ai.models import infer_model
 from pydantic_ai.providers import infer_provider_class
 
 from vizier_ai.chart_builder import build_plotly_spec
+from vizier_ai.constraints import apply_constraints
 from vizier_ai.mock_data import generate_mock_rows
 from vizier_ai.models.insights import (
+    ConstrainedInsightCandidates,
     InsightCandidates,
     Insight,
     Insights
 )
 from vizier_ai.models.data_schema import DatasetSchema
 from vizier_ai.models.data_profile import DataProfile
+from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.prompts import (
     DEFAULT_SCHEMA_SYSTEM_PROMPT,
     DEFAULT_INSIGHT_SYSTEM_PROMPT,
     DEFAULT_DATA_PROFILE_SYSTEM_PROMPT,
+    DEFAULT_CONSTRAINT_FAILSAFE_INSTRUCTION,
 )
 
 
 T = TypeVar("T", covariant=True)
+
+
+class UnsatisfiableConstraintsError(ValueError):
+    """Raised when insight generation constraints cannot be satisfied."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _build_constraint_block(constraints: InsightConstraints) -> str:
+    lines = ["", "Apply these constraints:"]
+    if constraints.include_chart_types:
+        lines.append(f"- Every trace must use one of these chart types: {', '.join(constraints.include_chart_types)}.")
+    if constraints.exclude_chart_types:
+        lines.append(f"- No trace may use these chart types: {', '.join(constraints.exclude_chart_types)}.")
+    if constraints.include_fields:
+        lines.append(f"- Every insight must feature at least one of these fields: {', '.join(constraints.include_fields)}.")
+    if constraints.exclude_fields:
+        lines.append(f"- No trace may reference these fields in its axes or filter: {', '.join(constraints.exclude_fields)}.")
+    if constraints.guidance:
+        lines.append(f"- Guidance (soft, not verified): {constraints.guidance}")
+    lines.append(DEFAULT_CONSTRAINT_FAILSAFE_INSTRUCTION)
+    return "\n".join(lines)
 
 
 async def call_llm(
@@ -113,6 +141,7 @@ async def run_pipeline(
     schema_system_prompt: str | None = None,
     insight_prompt: str | None = None,
     data_profile_system_prompt: str | None = None,
+    constraints: InsightConstraints | None = None,
 ) -> Insights:
     """Run the full LLM pipeline and build Plotly specs.
 
@@ -130,6 +159,10 @@ async def run_pipeline(
         schema_system_prompt: Override the default schema-mapping prompt.
         insight_prompt: Override the default insight-generation prompt.
         data_profile_system_prompt: Override the default data-profile prompt.
+        constraints: Optional hard/soft constraints for the insight generation
+            (chart types, fields, guidance). When given, the model may reply
+            with a fallback reason instead of insights if the constraints
+            cannot be satisfied; UnsatisfiableConstraintsError is raised then.
 
     Returns:
         dict with shape: { "insights": { "insights": [...] } }
@@ -155,12 +188,18 @@ async def run_pipeline(
         **llm_kwargs,
     )
 
-    insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:\n\n{schema.model_dump_json()}"
+    insight_output_type: type = InsightCandidates
+    constraint_block = ""
+    if constraints is not None:
+        insight_output_type = ConstrainedInsightCandidates
+        constraint_block = _build_constraint_block(constraints)
+
+    insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:{constraint_block}\n\n{schema.model_dump_json()}"
 
     insights_task = call_llm(
         insight_system,
         insight_prompt,
-        InsightCandidates,
+        insight_output_type,
         **llm_kwargs,
     )
     tasks = [insights_task]
@@ -177,15 +216,33 @@ async def run_pipeline(
         insights_output, profile_output = await asyncio.gather(*tasks)
     else:
         insights_output = await insights_task
-    
+
+    if constraints is not None:
+        if not insights_output.candidates:
+            raise UnsatisfiableConstraintsError(
+                insights_output.fallback_reason or "The hard constraints could not be satisfied."
+            )
+        filtered = apply_constraints(insights_output.candidates, constraints, schema)
+        if not filtered:
+            raise UnsatisfiableConstraintsError(
+                "No generated insight satisfied the hard constraints."
+            )
+        insights_output = InsightCandidates(candidates=filtered)
+
     insights_list = []
     for i, candidate in enumerate(insights_output.candidates):
-        rows = real_rows if not use_mock else generate_mock_rows(profile_output, seed=1337 + i)
+        rows = real_rows if not use_mock else generate_mock_rows(profile_output.model_dump(), seed=1337 + i)
 
         insight = Insight.from_candidate(candidate)
+        if use_mock:
+            insight.mock_seed = 1337 + i
         plotly_spec = build_plotly_spec(insight, rows)
         insight.chart_spec.plotlyData = plotly_spec["data"]
         insight.chart_spec.plotlyLayout = plotly_spec["layout"]
         insights_list.append(insight)
 
-    return Insights(insights=insights_list)
+    return Insights(
+        insights=insights_list,
+        dataset_schema=schema,
+        data_profile=profile_output if use_mock else None,
+    )

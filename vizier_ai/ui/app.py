@@ -14,10 +14,21 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
 sys.path.append(str(Path(__file__).parents[2]))
 
-from vizier_ai.core import run_pipeline, fetch_rest_data, fetch_sql_data, build_plotly_spec, generate_mock_rows
+from vizier_ai.core import (
+    run_pipeline,
+    fetch_rest_data,
+    fetch_sql_data,
+    build_plotly_spec,
+    generate_mock_rows,
+    UnsatisfiableConstraintsError,
+)
+from vizier_ai.bundle import render_bundle
+from vizier_ai.models.bundle import InsightBundle
+from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.insights import ChartSpec
 from vizier_ai.parser import parse_data
 from vizier_ai.ui.models.api import (
@@ -107,6 +118,11 @@ async def rate_limit_middleware(request: Request, call_next):
     response.headers["X-RateLimit-Global-Limit"] = str(_global_config.max_requests)
     return response
 
+@app.exception_handler(UnsatisfiableConstraintsError)
+async def unsatisfiable_constraints_handler(request: Request, exc: UnsatisfiableConstraintsError):
+    return JSONResponse(status_code=422, content={"detail": exc.reason})
+
+
 # --- Routes ---
 
 @app.post("/api/generate")
@@ -127,7 +143,7 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
         raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
         real_data = parse_data(raw_json, "json")
 
-    result = await run_pipeline(request.schema_text, real_data)
+    result = await run_pipeline(request.schema_text, real_data, constraints=request.constraints)
 
     session_id = _create_session(real_data, request.schema_text)
     response = InsightsResponse.model_validate(
@@ -146,14 +162,23 @@ async def generate_upload(
     schemaText: str = Form(...),
     file: UploadFile = File(...),
     fileFormat: str = Form(default="csv"),
+    constraints: str = Form(default=""),
 ) -> InsightsResponse:
     """Full pipeline with file upload via multipart form data."""
-    content = await file.read()
     if MAX_FILE_SIZE and file.size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
             detail=f"File too large. Max {MAX_FILE_SIZE // (1024 ** 2):.2f} MB. Got {file.size // (1024 ** 2):.2f} MB.",
         )
+
+    parsed_constraints: InsightConstraints | None = None
+    if constraints.strip():
+        try:
+            parsed_constraints = InsightConstraints.model_validate_json(constraints)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    content = await file.read()
 
     with tempfile.NamedTemporaryFile(mode="wb", suffix=f".{fileFormat}", delete=False) as tmp:
         tmp.write(content)
@@ -164,7 +189,7 @@ async def generate_upload(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    result = await run_pipeline(schemaText, real_data)
+    result = await run_pipeline(schemaText, real_data, constraints=parsed_constraints)
 
     session_id = _create_session(real_data, schemaText)
     response = InsightsResponse.model_validate(
@@ -188,7 +213,7 @@ async def regenerate(request: RegenerateRequest) -> InsightsResponse:
     schema_text = session.get("schema_text", "")
     real_data = session.get("real_data")
 
-    result = await run_pipeline(schema_text, real_data)
+    result = await run_pipeline(schema_text, real_data, constraints=request.constraints)
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -220,6 +245,45 @@ async def edit_chart(request: EditChartRequest) -> dict:
         "plotlyData": plotly_spec["data"],
         "plotlyLayout": plotly_spec["layout"],
     }
+
+
+@app.post("/api/load-bundle")
+async def load_bundle(
+    bundle: UploadFile = File(...),
+    data: UploadFile | None = File(default=None),
+    dataFormat: str = Form(default="csv"),
+) -> InsightsResponse:
+    """Render a saved insight bundle, optionally with an attached dataset. No LLM call."""
+    bundle_bytes = await bundle.read()
+    try:
+        parsed_bundle = InsightBundle.model_validate_json(bundle_bytes)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid bundle: {exc}")
+
+    rows: list[dict] = []
+    if data is not None:
+        data_text = (await data.read()).decode("utf-8")
+        try:
+            parsed_data = parse_data(data_text, dataFormat)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid data file: {exc}")
+        rows = parsed_data.get("rows", [])
+
+    result, warnings = render_bundle(parsed_bundle, rows=rows)
+
+    real_data = {"rows": rows, "rowCount": len(rows)} if rows else None
+    session_id = _create_session(real_data, parsed_bundle.dataset_schema.model_dump_json())
+
+    response = InsightsResponse.model_validate(
+        dict(
+            **result.model_dump(),
+            session_id=session_id,
+            warnings=warnings,
+        ),
+        by_name=True,
+    )
+
+    return response
 
 
 @app.get("/api/health")

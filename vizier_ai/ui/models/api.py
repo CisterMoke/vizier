@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.insights import Insights, TraceSpec
 
 
@@ -12,12 +13,14 @@ class GenerateRequest(BaseModel):
     rest_body: str | None = Field(default=None, alias="restBody")
     sql_connection: str | None = Field(default=None, alias="sqlConnection")
     sql_query: str | None = Field(default=None, alias="sqlQuery")
+    constraints: InsightConstraints | None = None
 
     model_config = {"populate_by_name": True}
 
 
 class RegenerateRequest(BaseModel):
     session_id: str = Field(alias="sessionId")
+    constraints: InsightConstraints | None = None
 
 
 class EditChartRequest(BaseModel):
@@ -27,3 +30,4 @@ class EditChartRequest(BaseModel):
 
 class InsightsResponse(Insights):
     session_id: str = Field(alias="sessionId")
+    warnings: list[str] | None = None

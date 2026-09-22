@@ -1,3 +1,4 @@
+import { fireEvent, render, screen } from '@testing-library/preact'
 import { useWorkspaceStore } from './workspaceStore'
 import type { InsightCandidate } from '../domain/types'
 
@@ -25,4 +26,27 @@ it('mockInsight has correct shape', () => {
   expect(mockInsight.metadata.title).toBe('Revenue trend')
   expect(mockInsight.chartSpec.plotlyData).toEqual([])
   expect(mockInsight.chartSpec.plotlyLayout).toEqual({})
+})
+
+describe('bundleContext', () => {
+  it('starts null and can be set', () => {
+    const Probe = () => {
+      const store = useWorkspaceStore()
+      return (
+        <button
+          onClick={() => store.setBundleContext({ schema: { source: 's', fields: [] }, dataProfile: null })}
+        >
+          {store.bundleContext ? 'set' : 'unset'}
+        </button>
+      )
+    }
+
+    render(<Probe />)
+
+    expect(screen.getByText('unset')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('unset'))
+
+    expect(screen.getByText('set')).toBeInTheDocument()
+  })
 })

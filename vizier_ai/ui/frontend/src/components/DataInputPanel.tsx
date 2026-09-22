@@ -1,6 +1,7 @@
 import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Title, Group } from '@mantine/core'
 import { useEffect, useState } from 'preact/hooks'
 import { fetchConfig, type ServerConfig } from '../services/apiClient'
+import type { InsightConstraintsPayload } from '../domain/constraints'
 
 export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
 export type FileFormat = 'csv' | 'json' | 'jsonl'
@@ -26,15 +27,18 @@ export interface GenerateRequest {
     rest?: RestApiConfig
     sql?: SqlConfig
   }
+  constraints?: InsightConstraintsPayload
 }
 
 interface DataInputPanelProps {
   onGenerate: (request: GenerateRequest) => Promise<void>
   isGenerating: boolean
   hasInsights?: boolean
+  onImportBundle?: (bundle: File, data?: File, dataFormat?: string) => Promise<void>
+  isImporting?: boolean
 }
 
-export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataInputPanelProps) {
+export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImportBundle, isImporting }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
   const [file, setFile] = useState<File | null>(null)
@@ -43,6 +47,9 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
   const [sqlConfig, setSqlConfig] = useState<SqlConfig>({ connectionString: '', query: '' })
   const [fileError, setFileError] = useState<string | null>(null)
   const [config, setConfig] = useState<ServerConfig | null>(null)
+  const [bundleFile, setBundleFile] = useState<File | null>(null)
+  const [bundleDataFile, setBundleDataFile] = useState<File | null>(null)
+  const [bundleDataFormat, setBundleDataFormat] = useState<FileFormat>('csv')
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -84,6 +91,12 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
         sql: dataSourceMode === 'sql' ? sqlConfig : undefined
       }
     })
+  }
+
+  const handleLoadBundle = async () => {
+    if (!bundleFile || !onImportBundle) return
+
+    await onImportBundle(bundleFile, bundleDataFile ?? undefined, bundleDataFormat)
   }
 
   return (
@@ -230,6 +243,58 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights }: DataIn
             </Group>
           </Stack>
         </form>
+
+        {onImportBundle ? (
+          <div>
+            <Text fw={500} size="sm" mb="xs">Load saved bundle</Text>
+            <Text c="dimmed" size="xs" mb="sm">
+              Restore a previously downloaded insight bundle, optionally with a dataset to render against.
+            </Text>
+            <Stack gap="sm">
+              <FileInput
+                label="Saved bundle file"
+                placeholder="vizier-insight-bundle.json"
+                value={bundleFile}
+                onChange={setBundleFile}
+                accept=".json"
+                disabled={isImporting}
+                name="bundle-file"
+              />
+              <Group gap="md" align="flex-end">
+                <FileInput
+                  label="Attach data file (optional)"
+                  placeholder="Choose file"
+                  value={bundleDataFile}
+                  onChange={setBundleDataFile}
+                  accept=".csv,.json,.jsonl,.txt"
+                  disabled={isImporting}
+                  style={{ flex: 1 }}
+                  name="bundle-data-file"
+                />
+                <Select
+                  label="Format"
+                  data={[
+                    { value: 'csv', label: 'CSV' },
+                    { value: 'json', label: 'JSON array' },
+                    { value: 'jsonl', label: 'JSONL' }
+                  ]}
+                  value={bundleDataFormat}
+                  onChange={(value) => setBundleDataFormat((value as FileFormat) ?? 'csv')}
+                  w={140}
+                  disabled={isImporting}
+                />
+              </Group>
+              <Button
+                variant="light"
+                onClick={handleLoadBundle}
+                loading={isImporting}
+                disabled={!bundleFile || isImporting}
+              >
+                {isImporting ? 'Loading bundle...' : 'Load bundle'}
+              </Button>
+            </Stack>
+          </div>
+        ) : null}
       </Stack>
     </Paper>
   )

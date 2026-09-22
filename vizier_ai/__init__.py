@@ -26,13 +26,17 @@ from vizier_ai.core import (
     call_llm,
     fetch_rest_data,
     fetch_sql_data,
+    UnsatisfiableConstraintsError,
     DEFAULT_SCHEMA_SYSTEM_PROMPT,
     DEFAULT_INSIGHT_SYSTEM_PROMPT,
     DEFAULT_DATA_PROFILE_SYSTEM_PROMPT,
 )
+from vizier_ai.bundle import build_bundle, render_bundle
 from vizier_ai.chart_builder import build_plotly_spec
 from vizier_ai.mock_data import generate_mock_rows
 from vizier_ai.parser import parse_data
+from vizier_ai.models.bundle import InsightBundle, SavedInsight
+from vizier_ai.models.constraints import InsightConstraints
 
 __all__ = [
     "run_pipeline",
@@ -42,6 +46,12 @@ __all__ = [
     "build_plotly_spec",
     "generate_mock_rows",
     "parse_data",
+    "build_bundle",
+    "render_bundle",
+    "InsightBundle",
+    "SavedInsight",
+    "UnsatisfiableConstraintsError",
+    "InsightConstraints",
     "DEFAULT_SCHEMA_SYSTEM_PROMPT",
     "DEFAULT_INSIGHT_SYSTEM_PROMPT",
     "DEFAULT_DATA_PROFILE_SYSTEM_PROMPT",

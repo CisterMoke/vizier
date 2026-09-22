@@ -1,18 +1,23 @@
 import { useState } from 'preact/hooks'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { ChartCarousel } from './components/ChartCarousel'
+import { ConstraintsPanel } from './components/ConstraintsPanel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
-import { callGenerate, regenerate } from './services/apiClient'
+import { callGenerate, regenerate, loadBundle } from './services/apiClient'
+import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
+import { buildDownloadBundle } from './domain/bundle'
 import { useWorkspaceStore } from './store/workspaceStore'
 
 export function App() {
   const workspace = useWorkspaceStore()
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [hasRealData, setHasRealData] = useState(false)
+  const [constraints, setConstraints] = useState<ConstraintsState>(EMPTY_CONSTRAINTS)
 
   const handleGenerate = async (request: GenerateRequest) => {
     workspace.setInsights([])
@@ -25,10 +30,11 @@ export function App() {
 
     try {
       setStatusMessage('Analyzing data and generating insights...')
-      const result = await callGenerate(request)
+      const result = await callGenerate({ ...request, constraints: buildConstraintsPayload(constraints) })
 
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
+      workspace.setBundleContext(result.context)
       setHasRealData(request.dataSource.mode !== 'none')
       setStatusMessage(null)
     } catch (error) {
@@ -49,8 +55,9 @@ export function App() {
 
     try {
       setStatusMessage('Regenerating insights...')
-      const newInsights = await regenerate(workspace.sessionId)
-      workspace.setInsights(newInsights)
+      const result = await regenerate(workspace.sessionId, buildConstraintsPayload(constraints))
+      workspace.setInsights(result.insights)
+      workspace.setBundleContext(result.context)
       setStatusMessage(null)
     } catch (error) {
       setGenerationError(
@@ -60,6 +67,43 @@ export function App() {
       setIsRegenerating(false)
       setStatusMessage(null)
     }
+  }
+
+  const handleImportBundle = async (bundle: File, data?: File, dataFormat?: string) => {
+    setGenerationError(null)
+    setStatusMessage('Loading saved bundle...')
+
+    setIsImporting(true)
+
+    try {
+      const result = await loadBundle(bundle, data, dataFormat)
+
+      workspace.setSessionId(result.sessionId)
+      workspace.setInsights(result.insights)
+      workspace.setBundleContext(result.context)
+      setHasRealData(!!data)
+      setStatusMessage(null)
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : 'Failed to load bundle.'
+      )
+    } finally {
+      setIsImporting(false)
+      setStatusMessage(null)
+    }
+  }
+
+  const handleDownloadBundle = () => {
+    const bundle = buildDownloadBundle(workspace.insights, workspace.bundleContext)
+    if (!bundle) return
+
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'vizier-insight-bundle.json'
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleDeleteCard = (insightId: string) => {
@@ -96,10 +140,25 @@ export function App() {
             onGenerate={handleGenerate}
             isGenerating={isGenerating}
             hasInsights={workspace.insights.length > 0}
+            onImportBundle={handleImportBundle}
+            isImporting={isImporting}
           />
 
-          {workspace.insights.length > 0 ? (
-            <Group justify="flex-end">
+          <ConstraintsPanel
+            value={constraints}
+            onChange={setConstraints}
+            disabled={isGenerating || isRegenerating}
+          />
+
+          <Group justify="flex-end">
+            <Button
+              variant="light"
+              onClick={handleDownloadBundle}
+              disabled={workspace.insights.length === 0}
+            >
+              Download bundle
+            </Button>
+            {workspace.insights.length > 0 ? (
               <Button
                 variant="light"
                 loading={isRegenerating}
@@ -108,8 +167,8 @@ export function App() {
               >
                 {isRegenerating ? 'Regenerating...' : 'Regenerate insights'}
               </Button>
-            </Group>
-          ) : null}
+            ) : null}
+          </Group>
 
           {hasRealData ? (
             <Text c="green" size="sm" fw={500}>

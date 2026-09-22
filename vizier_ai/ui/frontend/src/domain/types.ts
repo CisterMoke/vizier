@@ -25,4 +25,5 @@ export interface InsightCandidate {
   id: string
   metadata: InsightMetadata
   chart_spec: ChartSpec
+  mock_seed?: number | null
 }

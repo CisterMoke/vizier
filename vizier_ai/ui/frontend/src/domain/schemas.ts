@@ -31,6 +31,7 @@ export const insightCandidateSchema = z.object({
   id: z.string().min(1),
   metadata: insightMetadataSchema,
   chart_spec: chartSpecSchema,
+  mock_seed: z.number().nullable().optional(),
 })
 
 export const insightsSchema = z.object({
