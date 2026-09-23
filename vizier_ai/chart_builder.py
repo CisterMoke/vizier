@@ -346,8 +346,8 @@ def build_trace(
             "z": z if z else [i + 1 for i in range(len(x))],
         })
     elif chart_type == "geomap":
-        lon = [_to_number(v) for v in _resolve_values(filtered, trace_spec.x_axis)]
-        lat = [_to_number(v) for v in _resolve_values(filtered, trace_spec.y_axis)]
+        lon = [_to_number(v) for v in x]
+        lat = [_to_number(v) for v in y]
         geo_indices = _sample_indices(len(lon), _max_trace_points())
         if geo_indices is not None:
             lon = _take(lon, geo_indices)

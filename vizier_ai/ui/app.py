@@ -9,7 +9,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -46,9 +45,6 @@ from vizier_ai.ui.sessions import (
     _get_session_rows,
     _set_session_insights,
 )
-
-# Load .env file before reading any env vars
-load_dotenv(Path(__file__).parents[1] / ".env")
 
 app = FastAPI(title="Vizier AI LLM Proxy")
 

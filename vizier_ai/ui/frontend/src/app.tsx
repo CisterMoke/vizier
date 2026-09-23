@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { CollapsibleSection } from './components/CollapsibleSection'
 import { ChartErrorBoundary } from './components/ChartErrorBoundary'
 import { ConstraintsPanel } from './components/ConstraintsPanel'
@@ -125,13 +125,10 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#0e2a47,_transparent_50%),radial-gradient(circle_at_bottom_right,_#1a1240,_transparent_50%),#0a0a0f] py-10">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#0e2a47,transparent_50%),radial-gradient(circle_at_bottom_right,#1a1240,transparent_50%),#0a0a0f] py-10">
       <Container size="xl">
         <Stack gap="lg">
           <Paper withBorder radius="xl" p="xl" className="bg-gray-900/60 backdrop-blur-md shadow-lg border-gray-700/50">
-            <Badge variant="light" color="cyan" mb={8}>
-              Pixel Forge AI Hackathon
-            </Badge>
             <Title order={1}>Vizier AI</Title>
             <Text c="dimmed" mt={6}>
               Map any data source into a dataset schema, generate hypotheses, and visualize analytics instantly.

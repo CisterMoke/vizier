@@ -86,14 +86,14 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
     setIsRebuilding(true)
 
     try {
-      const traces: TraceSpec[] = [
-        {
-          chart_type: newType,
-          x_axis: '$.x',
-          y_axis: '$.y',
-        }
-      ]
-      const result = await editChart(sessionId, traces)
+      const oldType = insight.chart_spec.traces[0].chart_type;
+      const newTraces: TraceSpec[] = insight.chart_spec.traces.map(
+        spec => ({
+          ...spec,
+          chart_type: spec.chart_type == oldType ? newType : spec.chart_type,
+        })
+      )
+      const result = await editChart(sessionId, newTraces)
       applyEditResult(result)
     } catch {
       setEditingChartType(null)

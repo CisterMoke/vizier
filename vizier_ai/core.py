@@ -188,7 +188,7 @@ async def run_pipeline(
         **llm_kwargs,
     )
 
-    insight_output_type: type = InsightCandidates
+    insight_output_type = InsightCandidates
     constraint_block = ""
     if constraints is not None:
         insight_output_type = ConstrainedInsightCandidates
@@ -217,10 +217,11 @@ async def run_pipeline(
     else:
         insights_output = await insights_task
 
+    insights_output: InsightCandidates | ConstrainedInsightCandidates
     if constraints is not None:
         if not insights_output.candidates:
             raise UnsatisfiableConstraintsError(
-                insights_output.fallback_reason or "The hard constraints could not be satisfied."
+                insights_output.fallback_reason
             )
         filtered = apply_constraints(insights_output.candidates, constraints, schema)
         if not filtered:

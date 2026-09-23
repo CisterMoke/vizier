@@ -1,4 +1,4 @@
-DEFAULT_SCHEMA_SYSTEM_PROMPT = """You are a data schema analyzer. Given free-form text (SQL DDL, CSV headers, JSON, OpenAPI spec, scraped HTML, or any data description), extract a flat list of fields with their types and semantics."""
+DEFAULT_SCHEMA_SYSTEM_PROMPT = """You are a data schema analyzer. Given free-form text (SQL DDL, CSV headers, JSON, OpenAPI spec, scraped HTML, or any data description), extract a flat list of fields with their primitive types and semantics. Be complete; for each top-level field drill down as far as possible until you reach a primitive data type."""
 
 DEFAULT_INSIGHT_SYSTEM_PROMPT = """You are an analytics brainstorming assistant. Given a dataset schema with field semantics and jsonPath values, generate creative analytics hypotheses suitable for a hackathon demo. Return practical, visually interesting ideas with concise reasoning."""
 

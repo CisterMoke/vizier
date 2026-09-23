@@ -10,7 +10,13 @@ import subprocess
 import sys
 import threading
 import signal
+
+from dotenv import load_dotenv
 from pathlib import Path
+
+
+load_dotenv(Path(__file__).parents[1] / ".env")
+
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 PROJECT_ROOT = Path(__file__).parents[2]
