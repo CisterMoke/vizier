@@ -1,14 +1,11 @@
 import { lazy, Suspense, useState } from 'react'
-import { Alert, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
-import { CollapsibleSection } from './components/CollapsibleSection'
+import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core'
 import { ChartErrorBoundary } from './components/ChartErrorBoundary'
-import { ConstraintsPanel } from './components/ConstraintsPanel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
 import { callGenerate, regenerate, loadBundle } from './services/apiClient'
 import type { CsvOptionsPayload } from './domain/csv'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
-import { buildDownloadBundle } from './domain/bundle'
 import { useWorkspaceStore } from './store/workspaceStore'
 
 const ChartCarousel = lazy(() =>
@@ -107,19 +104,6 @@ export function App() {
     }
   }
 
-  const handleDownloadBundle = () => {
-    const bundle = buildDownloadBundle(workspace.insights, workspace.bundleContext, workspace.csvOptions)
-    if (!bundle) return
-
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'vizier-insight-bundle.json'
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   const handleDeleteCard = (insightId: string) => {
     workspace.removeInsight(insightId)
   }
@@ -153,38 +137,11 @@ export function App() {
             hasInsights={workspace.insights.length > 0}
             onImportBundle={handleImportBundle}
             isImporting={isImporting}
+            constraints={constraints}
+            onConstraintsChange={setConstraints}
+            onRegenerate={handleRegenerate}
+            isRegenerating={isRegenerating}
           />
-
-          <CollapsibleSection
-            label="Advanced options"
-            description="Nudge the model: chart types, fields, and free-form guidance."
-          >
-            <ConstraintsPanel
-              value={constraints}
-              onChange={setConstraints}
-              disabled={isGenerating || isRegenerating}
-            />
-          </CollapsibleSection>
-
-          <Group justify="flex-end">
-            <Button
-              variant="light"
-              onClick={handleDownloadBundle}
-              disabled={workspace.insights.length === 0}
-            >
-              Download bundle
-            </Button>
-            {workspace.insights.length > 0 ? (
-              <Button
-                variant="light"
-                loading={isRegenerating}
-                disabled={isRegenerating || isGenerating}
-                onClick={handleRegenerate}
-              >
-                {isRegenerating ? 'Regenerating...' : 'Regenerate insights'}
-              </Button>
-            ) : null}
-          </Group>
 
           {hasRealData ? (
             <Text c="green" size="sm" fw={500}>

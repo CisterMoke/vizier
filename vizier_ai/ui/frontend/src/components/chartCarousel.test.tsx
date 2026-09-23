@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import { ChartCarousel } from './ChartCarousel'
@@ -14,6 +14,10 @@ vi.mock('react-plotly.js', () => ({
       <div data-testid="plotly-chart" data-trace-type={props.data[0]?.type ?? 'unknown'} />
     )
   }
+}))
+
+vi.mock('../lib/plotly-bundle', () => ({
+  ensureTraceModules: vi.fn().mockResolvedValue(undefined)
 }))
 
 vi.mock('../services/apiClient', () => ({
@@ -32,7 +36,7 @@ const insights: InsightCandidate[] = [
       description: null,
     },
     chart_spec: {
-      traces: [],
+      traces: [{ chart_type: 'bar', x_axis: '$.category', y_axis: '$.revenue' }],
       plotlyData: [{ type: 'bar', x: ['A', 'B'], y: [120, 95] }],
       plotlyLayout: { title: { text: 'Revenue' } }
     }
@@ -46,7 +50,7 @@ const insights: InsightCandidate[] = [
       description: null,
     },
     chart_spec: {
-      traces: [],
+      traces: [{ chart_type: 'line', x_axis: '$.week', y_axis: '$.orders' }],
       plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2], y: [150, 220] }],
       plotlyLayout: { title: { text: 'Volume' } }
     }
@@ -61,6 +65,11 @@ const renderCarousel = (props: any) =>
       </MantineProvider>
     </div>
   )
+
+const chartTypeInput = () =>
+  screen.getByLabelText(/chart type/i, { selector: 'input' }) as HTMLInputElement
+
+const lastRender = () => plotRenders[plotRenders.length - 1] as { data: Array<{ type?: string }> }
 
 it('renders a single chart card with navigation dots for multiple insights', () => {
   const onDelete = vi.fn()
@@ -93,14 +102,26 @@ it('exposes delete action', () => {
   expect(onDelete).toHaveBeenCalledWith('ins-1')
 })
 
-it('keeps plot prop identities stable across unrelated state changes', () => {
+it('prefills the chart type from the insight recipe', () => {
   const onDelete = vi.fn()
 
   renderCarousel({ insights, sessionId: 'test-session', onDelete })
 
-  // Opening the combine modal re-renders the carousel, but the Plot props
-  // must keep their identities: react-plotly.js compares props with === and
-  // re-runs Plotly.react whenever layout/data/config identity changes.
+  expect(chartTypeInput().value).toBe('Bar')
+  expect(screen.queryByRole('button', { name: /undo chart edit/i })).not.toBeInTheDocument()
+})
+
+it('keeps plot prop identities stable across unrelated state changes', async () => {
+  const onDelete = vi.fn()
+
+  renderCarousel({ insights, sessionId: 'test-session', onDelete })
+
+  // The chart only renders once its trace modules are ready.
+  await screen.findByTestId('plotly-chart')
+
+  // Opening the combine modal re-renders the carousel, but the chart props
+  // must keep their identities: PlotlyChart re-plots (Plotly.react) whenever
+  // layout/data/config identity changes.
   const before = plotRenders.length
   const beforeRender = plotRenders[before - 1]
   fireEvent.click(screen.getByRole('button', { name: /combine charts/i }))
@@ -113,19 +134,55 @@ it('keeps plot prop identities stable across unrelated state changes', () => {
   expect(after.data).toBe(beforeRender.data)
 })
 
-it('re-renders the plot with fresh identities when the chart changes', () => {
+it('persists chart edits per insight while navigating', async () => {
   const onDelete = vi.fn()
+  const { editChart } = await import('../services/apiClient')
+  vi.mocked(editChart).mockResolvedValue({
+    plotlyData: [{ type: 'pie', labels: ['A'], values: [1] }],
+    plotlyLayout: { title: { text: 'Edited' } },
+  })
 
   renderCarousel({ insights, sessionId: 'test-session', onDelete })
 
-  const before = plotRenders.length
-  fireEvent.click(screen.getByRole('button', { name: /\u2192/ }))
+  // Edit chart 1 from bar to pie
+  fireEvent.click(chartTypeInput())
+  fireEvent.click(await screen.findByRole('option', { name: /^pie$/i }))
+  await waitFor(() => expect(lastRender().data[0]?.type).toBe('pie'))
 
-  expect(plotRenders.length).toBeGreaterThan(before)
-  const last = plotRenders[plotRenders.length - 1]
-  const previous = plotRenders[plotRenders.length - 2]
-  expect(last.data).not.toBe(previous.data)
-  expect(last.layout).not.toBe(previous.layout)
+  // Navigate to chart 2: its own (unedited) chart is shown
+  fireEvent.click(screen.getByRole('button', { name: /\u2192/ }))
+  expect(screen.getByRole('heading', { name: /order volume trend/i })).toBeInTheDocument()
+  await waitFor(() => expect(lastRender().data[0]?.type).toBe('scatter'))
+  expect(chartTypeInput().value).toBe('Line')
+
+  // Navigate back: chart 1 keeps its persisted pie edit
+  fireEvent.click(screen.getByRole('button', { name: /\u2190/ }))
+  expect(screen.getByRole('heading', { name: /revenue by category/i })).toBeInTheDocument()
+  await waitFor(() => expect(lastRender().data[0]?.type).toBe('pie'))
+  expect(chartTypeInput().value).toBe('Pie')
+})
+
+it('undoes a chart edit back to the original chart', async () => {
+  const onDelete = vi.fn()
+  const { editChart } = await import('../services/apiClient')
+  vi.mocked(editChart).mockResolvedValue({
+    plotlyData: [{ type: 'pie', labels: ['A'], values: [1] }],
+    plotlyLayout: { title: { text: 'Edited' } },
+  })
+
+  renderCarousel({ insights, sessionId: 'test-session', onDelete })
+
+  fireEvent.click(chartTypeInput())
+  fireEvent.click(await screen.findByRole('option', { name: /^pie$/i }))
+  await waitFor(() => expect(lastRender().data[0]?.type).toBe('pie'))
+
+  // The undo arrow appears only once the chart differs from the original
+  const undo = screen.getByRole('button', { name: /undo chart edit/i })
+  fireEvent.click(undo)
+
+  await waitFor(() => expect(lastRender().data[0]?.type).toBe('bar'))
+  expect(chartTypeInput().value).toBe('Bar')
+  expect(screen.queryByRole('button', { name: /undo chart edit/i })).not.toBeInTheDocument()
 })
 
 const staticInsight: InsightCandidate = {
@@ -137,7 +194,7 @@ const staticInsight: InsightCandidate = {
     description: null,
   },
   chart_spec: {
-    traces: [],
+    traces: [{ chart_type: 'scatter', x_axis: '$.x', y_axis: '$.y' }],
     plotlyData: null,
     plotlyLayout: null,
     isStatic: true,
@@ -167,10 +224,10 @@ it('shows a server-rendered svg after editing a static chart', async () => {
 
   renderCarousel({ insights: [staticInsight], sessionId: 'test-session', onDelete })
 
-  fireEvent.click(screen.getByLabelText(/chart type/i, { selector: 'input' }))
+  fireEvent.click(chartTypeInput())
   fireEvent.click(await screen.findByRole('option', { name: /line/i }))
 
   const img = await screen.findByRole('img', { name: /huge scatter/i })
   expect(img.getAttribute('src') ?? '').toMatch(/^data:image\/svg\+xml/)
-  expect(screen.getByRole('button', { name: /reset chart/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /undo chart edit/i })).toBeInTheDocument()
 })

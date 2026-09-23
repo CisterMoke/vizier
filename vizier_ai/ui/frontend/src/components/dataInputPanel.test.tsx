@@ -123,3 +123,47 @@ it('sends csv options with the generate request', async () => {
   expect(request.dataSource.mode).toBe('file')
   expect(request.csvOptions).toEqual({ quote_char: "'" })
 })
+
+it('renders the advanced options inside the panel when a change handler is given', async () => {
+  const onGenerate = vi.fn().mockResolvedValue(undefined)
+  const onConstraintsChange = vi.fn()
+
+  renderWithMantine(
+    <DataInputPanel
+      onGenerate={onGenerate}
+      isGenerating={false}
+      constraints={undefined}
+      onConstraintsChange={onConstraintsChange}
+    />
+  )
+
+  expect(screen.queryByLabelText(/guidance/i)).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }))
+  fireEvent.input(screen.getByLabelText(/guidance/i), {
+    target: { value: 'compare regions' }
+  })
+
+  expect(onConstraintsChange).toHaveBeenCalledTimes(1)
+})
+
+it('shows the regenerate button next to generate analytics when insights exist', () => {
+  const onGenerate = vi.fn().mockResolvedValue(undefined)
+  const onRegenerate = vi.fn()
+
+  renderWithMantine(
+    <DataInputPanel
+      onGenerate={onGenerate}
+      isGenerating={false}
+      hasInsights
+      onRegenerate={onRegenerate}
+    />
+  )
+
+  const generate = screen.getByRole('button', { name: /generate analytics/i })
+  const regenerate = screen.getByRole('button', { name: /regenerate insights/i })
+  expect(generate.parentElement).toBe(regenerate.parentElement)
+
+  fireEvent.click(regenerate)
+  expect(onRegenerate).toHaveBeenCalledTimes(1)
+})

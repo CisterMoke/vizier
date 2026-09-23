@@ -1,15 +1,16 @@
-import { Badge, Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox } from '@mantine/core'
-import { useCallback, useMemo, useState } from 'react'
+import { ActionIcon, Badge, Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox, Skeleton } from '@mantine/core'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { InsightCandidate, TraceSpec } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
-import { editChart, insightSvgUrl } from '../services/apiClient'
+import { ensureTraceModules } from '../lib/plotly-bundle'
+import { editChart, insightSvgUrl, type EditChartResult } from '../services/apiClient'
 
 // react-plotly.js ships CJS; bundler interop can deliver the module wrapper
 // ({ default: Component }) instead of the component itself.
 const Plot =
   (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
 
-// Static object identities: react-plotly.js re-plots (Plotly.react) whenever
+// Static object identities: PlotlyChart re-plots (Plotly.react) whenever
 // data/layout/config prop identity changes, so these must never be inlined.
 const PLOT_CONFIG = { responsive: true, displaylogo: false }
 const PLOT_STYLE = { width: '100%', height: '400px' }
@@ -23,6 +24,13 @@ const CHART_TYPES = [
   { value: 'geomap', label: 'Geo map' },
 ]
 
+interface InsightEdit {
+  chartType: string
+  plotlyData: unknown[] | null
+  plotlyLayout: Record<string, unknown> | null
+  staticSvg: string | null
+}
+
 interface ChartCarouselProps {
   insights: InsightCandidate[]
   sessionId: string
@@ -31,13 +39,11 @@ interface ChartCarouselProps {
 
 export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0)
-  const [editingChartType, setEditingChartType] = useState<string | null>(null)
+  const [insightEdits, setInsightEdits] = useState<Record<string, InsightEdit>>({})
   const [combineOpen, setCombineOpen] = useState(false)
   const [combineSelection, setCombineSelection] = useState<Set<string>>(new Set())
-  const [editedPlotlyData, setEditedPlotlyData] = useState<unknown[] | null>(null)
-  const [editedPlotlyLayout, setEditedPlotlyLayout] = useState<Record<string, unknown> | null>(null)
-  const [editedStaticSvg, setEditedStaticSvg] = useState<string | null>(null)
   const [isRebuilding, setIsRebuilding] = useState(false)
+  const [chartModulesReady, setChartModulesReady] = useState(false)
 
   const next = useCallback(() => {
     setActiveIndex((current) => (current + 1) % insights.length)
@@ -49,54 +55,87 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
 
   // All hooks must run before any conditional return (Rules of Hooks).
   const insight = insights[activeIndex] ?? null
-  const activePlotlyData = editedPlotlyData ?? insight?.chart_spec.plotlyData ?? null
-  const activePlotlyLayout = editedPlotlyLayout ?? insight?.chart_spec.plotlyLayout ?? null
+  const edit = insight ? insightEdits[insight.id] ?? null : null
+  const activePlotlyData = edit?.plotlyData ?? insight?.chart_spec.plotlyData ?? null
+  const activePlotlyLayout = edit?.plotlyLayout ?? insight?.chart_spec.plotlyLayout ?? null
+  const originalChartType = insight?.chart_spec.traces[0]?.chart_type ?? null
+  const currentChartType = edit?.chartType ?? originalChartType
   const plotLayout = useMemo(
     () => ({ ...(activePlotlyLayout as Partial<Plotly.Layout>), autosize: true }),
     [activePlotlyLayout]
   )
 
+  const traceTypes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          ((activePlotlyData as Array<{ type?: string }> | null) ?? [])
+            .map((trace) => trace?.type)
+            .filter((type): type is string => Boolean(type))
+        )
+      ),
+    [activePlotlyData]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    setChartModulesReady(false)
+    ensureTraceModules(traceTypes).then(() => {
+      if (!cancelled) {
+        setChartModulesReady(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [traceTypes])
+
   if (insights.length === 0 || !insight) {
     return null
   }
 
-  const showStaticChart = editedStaticSvg !== null
-    || (insight.chart_spec.isStatic === true && editedPlotlyData === null)
+  const showStaticChart = edit?.staticSvg !== null && edit?.staticSvg !== undefined
+    || (insight.chart_spec.isStatic === true && edit === null)
 
-  const staticSrc = editedStaticSvg
-    ? `data:image/svg+xml;utf8,${encodeURIComponent(editedStaticSvg)}`
+  const staticSrc = edit?.staticSvg
+    ? `data:image/svg+xml;utf8,${encodeURIComponent(edit.staticSvg)}`
     : insightSvgUrl(sessionId, insight.id)
 
-  const applyEditResult = (result: { plotlyData: unknown[] | null; plotlyLayout: Record<string, unknown> | null; isStatic?: boolean; staticSvg?: string | null }) => {
-    if (result.isStatic && result.staticSvg) {
-      setEditedStaticSvg(result.staticSvg)
-      setEditedPlotlyData(null)
-      setEditedPlotlyLayout(null)
-    } else {
-      setEditedStaticSvg(null)
-      setEditedPlotlyData(result.plotlyData)
-      setEditedPlotlyLayout(result.plotlyLayout)
-    }
+  const applyEditResult = (chartType: string, result: EditChartResult) => {
+    setInsightEdits((current) => ({
+      ...current,
+      [insight.id]: {
+        chartType,
+        plotlyData: result.plotlyData,
+        plotlyLayout: result.plotlyLayout,
+        staticSvg: result.isStatic ? result.staticSvg : null,
+      },
+    }))
+  }
+
+  const undoEdit = () => {
+    setInsightEdits((current) => {
+      const nextEdits = { ...current }
+      delete nextEdits[insight.id]
+      return nextEdits
+    })
   }
 
   const handleChartTypeChange = async (newType: string | null) => {
-    if (!newType || !sessionId || !insight) return
+    if (!newType || !sessionId || newType === currentChartType) return
 
-    setEditingChartType(newType)
     setIsRebuilding(true)
 
     try {
-      const oldType = insight.chart_spec.traces[0].chart_type;
-      const newTraces: TraceSpec[] = insight.chart_spec.traces.map(
-        spec => ({
-          ...spec,
-          chart_type: spec.chart_type == oldType ? newType : spec.chart_type,
-        })
-      )
+      const newTraces: TraceSpec[] = insight.chart_spec.traces.map((spec) => ({
+        ...spec,
+        chart_type: spec.chart_type === originalChartType ? newType : spec.chart_type,
+      }))
       const result = await editChart(sessionId, newTraces)
-      applyEditResult(result)
+      applyEditResult(newType, result)
     } catch {
-      setEditingChartType(null)
+      // The select snaps back on its own: its value only changes when an
+      // edit is actually stored.
     } finally {
       setIsRebuilding(false)
     }
@@ -117,7 +156,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
         }
       })
       const result = await editChart(sessionId, traces)
-      applyEditResult(result)
+      applyEditResult(currentChartType ?? 'bar', result)
       setCombineOpen(false)
     } catch {
     } finally {
@@ -127,13 +166,13 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
 
   const toggleCombineSelection = (id: string) => {
     setCombineSelection((current) => {
-      const next = new Set(current)
-      if (next.has(id)) {
-        next.delete(id)
+      const nextSelection = new Set(current)
+      if (nextSelection.has(id)) {
+        nextSelection.delete(id)
       } else {
-        next.add(id)
+        nextSelection.add(id)
       }
-      return next
+      return nextSelection
     })
   }
 
@@ -148,18 +187,16 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
         </div>
         {insights.length > 1 ? (
           <Group gap="xs">
-            {insights.length > 1 ? (
-              <Button
-                variant="light"
-                size="sm"
-                onClick={() => {
-                  setCombineSelection(new Set([insight.id]))
-                  setCombineOpen(true)
-                }}
-              >
-                Combine charts
-              </Button>
-            ) : null}
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => {
+                setCombineSelection(new Set([insight.id]))
+                setCombineOpen(true)
+              }}
+            >
+              Combine charts
+            </Button>
             <Button variant="default" size="sm" onClick={prev}>
               &#8592;
             </Button>
@@ -186,15 +223,28 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
           </Text>
 
           {sessionId ? (
-            <Select
-              label="Chart type"
-              data={CHART_TYPES}
-              value={editingChartType}
-              onChange={handleChartTypeChange}
-              disabled={isRebuilding}
-              size="sm"
-              w={200}
-            />
+            <Group gap="xs" align="flex-end">
+              <Select
+                label="Chart type"
+                data={CHART_TYPES}
+                value={currentChartType}
+                onChange={handleChartTypeChange}
+                disabled={isRebuilding}
+                size="sm"
+                w={200}
+              />
+              {edit ? (
+                <ActionIcon
+                  variant="subtle"
+                  aria-label="Undo chart edit"
+                  title="Undo chart edit"
+                  onClick={undoEdit}
+                  mb={3}
+                >
+                  &#8630;
+                </ActionIcon>
+              ) : null}
+            </Group>
           ) : null}
 
           {showStaticChart ? (
@@ -208,7 +258,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
                 Static preview — dataset exceeds the interactive-rendering limit
               </Badge>
             </Stack>
-          ) : (
+          ) : chartModulesReady ? (
             <Plot
               data={activePlotlyData as Plotly.Data[]}
               layout={plotLayout}
@@ -216,23 +266,11 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
               style={PLOT_STYLE}
               useResizeHandler
             />
+          ) : (
+            <Skeleton height={400} radius="md" />
           )}
 
           <Group justify="flex-end">
-            {editedPlotlyData || editedStaticSvg ? (
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => {
-                  setEditedPlotlyData(null)
-                  setEditedPlotlyLayout(null)
-                  setEditedStaticSvg(null)
-                  setEditingChartType(null)
-                }}
-              >
-                Reset chart
-              </Button>
-            ) : null}
             <Button color="red" variant="light" type="button" onClick={() => onDelete(insight.id)}>
               Delete
             </Button>
@@ -246,13 +284,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
             <button
               key={index}
               type="button"
-              onClick={() => {
-                setActiveIndex(index)
-                setEditedPlotlyData(null)
-                setEditedPlotlyLayout(null)
-                setEditedStaticSvg(null)
-                setEditingChartType(null)
-              }}
+              onClick={() => setActiveIndex(index)}
               className="inline-block rounded-full transition-all"
               style={{
                 width: index === activeIndex ? '24px' : '8px',

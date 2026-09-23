@@ -5,6 +5,10 @@ vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
 }))
 
+vi.mock('./lib/plotly-bundle', () => ({
+  ensureTraceModules: vi.fn().mockResolvedValue(undefined)
+}))
+
 const callGenerateMock = vi.fn()
 const regenerateMock = vi.fn()
 const loadBundleMock = vi.fn()
@@ -131,33 +135,6 @@ it('sends constraints with the regenerate request', async () => {
   await waitFor(() => expect(regenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
   expect(regenerateMock.mock.calls[0][0]).toBe('session-42')
   expect(regenerateMock.mock.calls[0][1]).toEqual({ guidance: 'compare regions' })
-})
-
-it('renders the download button and enables it once insights exist', async () => {
-  callGenerateMock.mockResolvedValue({
-    sessionId: 'session-9',
-    insights: [
-      {
-        id: 'insight-1',
-        metadata: { title: 'T', summary: 'S', keyIdea: 'K', description: null },
-        chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} }
-      }
-    ],
-    context: { schema: { source: 's', fields: [] }, dataProfile: null }
-  })
-
-  renderApp()
-
-  expect(screen.getByRole('button', { name: /download bundle/i })).toBeDisabled()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
-  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-
-  await waitFor(() => expect(screen.getByRole('button', { name: /download bundle/i })).not.toBeDisabled())
 })
 
 it('loads a bundle through the import section', async () => {

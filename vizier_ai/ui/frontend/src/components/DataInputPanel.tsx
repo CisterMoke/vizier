@@ -3,7 +3,11 @@ import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { fetchConfig, type ServerConfig } from '../services/apiClient'
 import type { InsightConstraintsPayload } from '../domain/constraints'
+import type { ConstraintsState } from '../domain/constraints'
+import { EMPTY_CONSTRAINTS } from '../domain/constraints'
 import { buildCsvOptionsPayload, DEFAULT_CSV_OPTIONS, type CsvOptionsPayload, type CsvOptionsState } from '../domain/csv'
+import { CollapsibleSection } from './CollapsibleSection'
+import { ConstraintsPanel } from './ConstraintsPanel'
 import { CsvOptionsSection } from './CsvOptionsSection'
 
 export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
@@ -40,6 +44,10 @@ interface DataInputPanelProps {
   hasInsights?: boolean
   onImportBundle?: (bundle: File, data?: File, dataFormat?: string, csvOptions?: CsvOptionsPayload) => Promise<void>
   isImporting?: boolean
+  constraints?: ConstraintsState
+  onConstraintsChange?: (state: ConstraintsState) => void
+  onRegenerate?: () => void
+  isRegenerating?: boolean
 }
 
 const inferDataFormat = (filename: string): FileFormat => {
@@ -49,7 +57,17 @@ const inferDataFormat = (filename: string): FileFormat => {
   return 'csv'
 }
 
-export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImportBundle, isImporting }: DataInputPanelProps) {
+export function DataInputPanel({
+  onGenerate,
+  isGenerating,
+  hasInsights,
+  onImportBundle,
+  isImporting,
+  constraints,
+  onConstraintsChange,
+  onRegenerate,
+  isRegenerating,
+}: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
   const [file, setFile] = useState<File | null>(null)
@@ -253,60 +271,84 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
               </Stack>
             ) : null}
 
-            <Group gap="md">
-              <Button type="submit" loading={isGenerating} disabled={isGenerating}>
-                {isGenerating ? 'Analyzing & generating...' : 'Generate analytics'}
-              </Button>
+            {onConstraintsChange ? (
+              <CollapsibleSection
+                label="Advanced options"
+                description="Nudge the model: chart types, fields, and free-form guidance."
+              >
+                <ConstraintsPanel
+                  value={constraints ?? EMPTY_CONSTRAINTS}
+                  onChange={onConstraintsChange}
+                  disabled={isGenerating || isRegenerating}
+                />
+              </CollapsibleSection>
+            ) : null}
+
+            {onImportBundle ? (
+              <Group gap="sm" align="flex-end">
+                <FileInput
+                  label="Load bundle"
+                  placeholder="vizier-insight-bundle.json"
+                  value={bundleFile}
+                  onChange={setBundleFile}
+                  accept=".json"
+                  disabled={isImporting}
+                  size="sm"
+                  variant="unstyled"
+                  name="bundle-file"
+                  style={{ flex: 1 }}
+                />
+                {bundleFile ? (
+                  <>
+                    <FileInput
+                      label="Attach dataset (optional)"
+                      placeholder="Choose file"
+                      value={bundleDataFile}
+                      onChange={setBundleDataFile}
+                      accept=".csv,.json,.jsonl,.txt"
+                      disabled={isImporting}
+                      size="sm"
+                      variant="unstyled"
+                      name="bundle-data-file"
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="light"
+                      onClick={handleLoadBundle}
+                      loading={isImporting}
+                      disabled={isImporting}
+                    >
+                      Load
+                    </Button>
+                  </>
+                ) : null}
+              </Group>
+            ) : null}
+
+            <Group gap="md" justify="flex-end">
               {hasInsights && dataSourceMode !== 'none' ? (
                 <Text c="dimmed" size="sm">
                   Selecting a data source and generating will refresh insights with real data.
                 </Text>
               ) : null}
+              {hasInsights && onRegenerate ? (
+                <Button
+                  variant="light"
+                  loading={isRegenerating}
+                  disabled={isRegenerating || isGenerating}
+                  onClick={onRegenerate}
+                >
+                  {isRegenerating ? 'Regenerating...' : 'Regenerate insights'}
+                </Button>
+              ) : null}
+              <Button type="submit" loading={isGenerating} disabled={isGenerating}>
+                {isGenerating ? 'Analyzing & generating...' : 'Generate analytics'}
+              </Button>
             </Group>
           </Stack>
         </form>
-
-        {onImportBundle ? (
-          <Group gap="sm" align="flex-end" mt="xs">
-            <FileInput
-              label="Load bundle"
-              placeholder="vizier-insight-bundle.json"
-              value={bundleFile}
-              onChange={setBundleFile}
-              accept=".json"
-              disabled={isImporting}
-              size="sm"
-              variant="unstyled"
-              name="bundle-file"
-              style={{ flex: 1 }}
-            />
-            {bundleFile ? (
-              <>
-                <FileInput
-                  label="Attach dataset (optional)"
-                  placeholder="Choose file"
-                  value={bundleDataFile}
-                  onChange={setBundleDataFile}
-                  accept=".csv,.json,.jsonl,.txt"
-                  disabled={isImporting}
-                  size="sm"
-                  variant="unstyled"
-                  name="bundle-data-file"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  size="sm"
-                  variant="light"
-                  onClick={handleLoadBundle}
-                  loading={isImporting}
-                  disabled={isImporting}
-                >
-                  Load
-                </Button>
-              </>
-            ) : null}
-          </Group>
-        ) : null}
       </Stack>
     </Paper>
   )

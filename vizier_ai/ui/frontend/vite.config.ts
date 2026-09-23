@@ -13,6 +13,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // react-plotly.js imports the full plotly bundle; redirect it to our
+      // partial bundle with on-demand geo/GL trace modules.
       'plotly.js/dist/plotly': fileURLToPath(new URL('./src/lib/plotly-bundle.ts', import.meta.url)),
     },
   },
