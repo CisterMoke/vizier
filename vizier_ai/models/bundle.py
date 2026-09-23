@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from vizier_ai.models.csv_options import CsvOptions
 from vizier_ai.models.data_profile import DataProfile
 from vizier_ai.models.data_schema import DatasetSchema
 from vizier_ai.models.insights import InsightCandidate
@@ -35,4 +36,8 @@ class InsightBundle(BaseModel):
         ...,
         min_length=1,
         description="Saved insights: metadata and chart recipes only, no rendered data points.",
+    )
+    csv_options: CsvOptions | None = Field(
+        default=None,
+        description="Parsing options used for the original CSV upload. Applied automatically when a dataset is attached to this bundle, so loading requires no manual configuration.",
     )

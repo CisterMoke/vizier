@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 from vizier_ai.models.constraints import InsightConstraints
+from vizier_ai.models.csv_options import CsvOptions
 from vizier_ai.models.insights import Insights, TraceSpec
 
 
@@ -30,4 +31,8 @@ class EditChartRequest(BaseModel):
 
 class InsightsResponse(Insights):
     session_id: str = Field(alias="sessionId")
+    csv_options: CsvOptions | None = Field(
+        default=None,
+        description="Parsing options used for the CSV upload, echoed so clients can persist them in a saved bundle.",
+    )
     warnings: list[str] | None = None

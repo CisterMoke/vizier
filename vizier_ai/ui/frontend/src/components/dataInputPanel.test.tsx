@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/preact'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { DataInputPanel } from './DataInputPanel'
 import type { GenerateRequest } from './DataInputPanel'
@@ -49,7 +49,7 @@ it('renders data source selector with all options', () => {
   expect(screen.getByText(/sql query/i)).toBeInTheDocument()
 })
 
-it('renders the load bundle section', () => {
+it('shows bundle load and reveals attach dataset once a bundle is picked', async () => {
   const onGenerate = vi.fn().mockResolvedValue(undefined)
   const onImportBundle = vi.fn().mockResolvedValue(undefined)
 
@@ -57,12 +57,15 @@ it('renders the load bundle section', () => {
     <DataInputPanel onGenerate={onGenerate} isGenerating={false} onImportBundle={onImportBundle} />
   )
 
-  expect(screen.getByLabelText(/saved bundle file/i)).toBeInTheDocument()
-  expect(screen.getByLabelText(/attach data file \(optional\)/i)).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /load bundle/i })).toBeDisabled()
+  expect(screen.getByLabelText(/load bundle/i)).toBeInTheDocument()
+  expect(screen.queryByLabelText(/attach dataset/i)).not.toBeInTheDocument()
+
+  selectFile(bundleInput(), new File(['{}'], 'bundle.json', { type: 'application/json' }))
+
+  expect(await screen.findByLabelText(/attach dataset/i)).toBeInTheDocument()
 })
 
-it('calls onImportBundle with the selected files', async () => {
+it('calls onImportBundle with the selected files and inferred format', async () => {
   const onGenerate = vi.fn().mockResolvedValue(undefined)
   const onImportBundle = vi.fn().mockResolvedValue(undefined)
 
@@ -71,19 +74,19 @@ it('calls onImportBundle with the selected files', async () => {
   )
 
   const bundleFile = new File(['{}'], 'bundle.json', { type: 'application/json' })
-  const dataFile = new File(['county\nKing'], 'data.csv', { type: 'text/csv' })
+  const dataFile = new File(['[{"county":"King"}]'], 'data.json', { type: 'application/json' })
 
   selectFile(bundleInput(), bundleFile)
+  await screen.findByLabelText(/attach dataset/i)
   selectFile(bundleDataInput(), dataFile)
 
-  const loadButton = screen.getByRole('button', { name: /load bundle/i })
-  await waitFor(() => expect(loadButton).not.toBeDisabled())
-
-  fireEvent.click(loadButton)
+  fireEvent.click(await screen.findByRole('button', { name: /^load$/i }))
 
   await waitFor(() => expect(onImportBundle).toHaveBeenCalledTimes(1))
   expect(onImportBundle.mock.calls[0][0]).toBe(bundleFile)
   expect(onImportBundle.mock.calls[0][1]).toBe(dataFile)
+  expect(onImportBundle.mock.calls[0][2]).toBe('json')
+  expect(onImportBundle.mock.calls[0][3]).toBeUndefined()
 })
 
 it('shows csv options for the main upload when file mode and csv format are selected', async () => {

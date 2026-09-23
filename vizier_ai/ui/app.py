@@ -83,7 +83,10 @@ _global_limiter = GlobalRateLimiter(_global_config)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path == "/api/health":
+    # Rate limiting protects the LLM-backed API only. Static assets, the
+    # SPA fallback route, and cheap page-load endpoints stay unrestricted.
+    path = request.url.path
+    if not path.startswith("/api/") or path in ("/api/health", "/api/config"):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
@@ -150,24 +153,6 @@ def _recipe_only(insights: list) -> list:
     return copies
 
 
-def _apply_static_mode(insights: list, session: dict | None) -> list:
-    """Mark insights over the rendering threshold as static, dropping their arrays.
-
-    Requires session rows (static SVGs are re-materialized server-side) and
-    an available static renderer; otherwise everything stays interactive.
-    """
-    rows = _get_session_rows(session) if session else []
-    if not rows or not static_render.is_static_rendering_available():
-        return insights
-    for insight in insights:
-        spec = insight.chart_spec
-        if spec.plotlyData and static_render.exceeds_static_threshold(spec.plotlyData):
-            spec.isStatic = True
-            spec.plotlyData = None
-            spec.plotlyLayout = None
-    return insights
-
-
 # --- Routes ---
 
 @app.post("/api/generate")
@@ -193,7 +178,6 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
     session_id = _create_session(
         real_data, request.schema_text, insights=_recipe_only(result.insights)
     )
-    _apply_static_mode(result.insights, _get_session(session_id))
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -233,19 +217,21 @@ async def generate_upload(
         tmp.write(content)
         tmp_path = Path(tmp.name)
 
+    csv_options = _parse_csv_options(csvOptions)
+
     try:
-        real_data = parse_data(tmp_path, fileFormat, csv_options=_parse_csv_options(csvOptions))
+        real_data = parse_data(tmp_path, fileFormat, csv_options=csv_options)
     finally:
         tmp_path.unlink(missing_ok=True)
 
     result = await run_pipeline(schemaText, real_data, constraints=parsed_constraints)
 
     session_id = _create_session(real_data, schemaText, insights=_recipe_only(result.insights))
-    _apply_static_mode(result.insights, _get_session(session_id))
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
             session_id = session_id,
+            csv_options = csv_options,
         ),
         by_name=True,
     )
@@ -265,7 +251,6 @@ async def regenerate(request: RegenerateRequest) -> InsightsResponse:
 
     result = await run_pipeline(schema_text, real_data, constraints=request.constraints)
     _set_session_insights(request.session_id, _recipe_only(result.insights))
-    _apply_static_mode(result.insights, session)
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -297,22 +282,9 @@ async def edit_chart(request: EditChartRequest) -> dict:
     )
     plotly_spec = build_plotly_spec(insight, rows)
 
-    over_threshold = (
-        static_render.is_static_rendering_available()
-        and static_render.exceeds_static_threshold(plotly_spec["data"])
-    )
-    if over_threshold:
-        try:
-            svg = static_render.render_static_svg(plotly_spec)
-        except static_render.StaticRenderUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-        return {"plotlyData": None, "plotlyLayout": None, "isStatic": True, "staticSvg": svg}
-
     return {
         "plotlyData": plotly_spec["data"],
         "plotlyLayout": plotly_spec["layout"],
-        "isStatic": False,
-        "staticSvg": None,
     }
 
 
@@ -358,7 +330,7 @@ async def load_bundle(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid bundle: {exc}")
 
-    csv_options = _parse_csv_options(csvOptions)
+    csv_options = _parse_csv_options(csvOptions) or parsed_bundle.csv_options
 
     rows: list[dict] = []
     if data is not None:
@@ -377,12 +349,12 @@ async def load_bundle(
         parsed_bundle.dataset_schema.model_dump_json(),
         insights=_recipe_only(result.insights),
     )
-    _apply_static_mode(result.insights, _get_session(session_id))
 
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
             session_id=session_id,
+            csv_options=csv_options,
             warnings=warnings,
         ),
         by_name=True,

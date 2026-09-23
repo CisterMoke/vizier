@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/preact'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { CsvOptionsSection } from './CsvOptionsSection'
 import { DEFAULT_CSV_OPTIONS, type CsvOptionsState } from '../domain/csv'

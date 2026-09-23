@@ -4,6 +4,7 @@ Resolves JSONPath, applies filters and aggregation, and builds
 Plotly-compatible trace and layout dicts for the frontend to render.
 """
 
+import math
 import os
 import re
 from typing import Any
@@ -19,6 +20,7 @@ PAPER_BG = "rgba(15, 23, 42, 0.4)"
 PLOT_BG = "rgba(15, 23, 42, 0.2)"
 
 DEFAULT_GL_TRACE_THRESHOLD = 1000
+DEFAULT_MAX_TRACE_POINTS = 10_000
 
 TRACE_COLORS = [
     "#22d3ee", "#818cf8", "#f472b6", "#fbbf24",
@@ -253,6 +255,32 @@ def _scatter_type(point_count: int) -> str:
     return "scattergl" if point_count > _gl_trace_threshold() else "scatter"
 
 
+def _max_trace_points() -> int:
+    """Maximum plotted points per trace; 0 disables the cap. Configurable
+    via MAX_TRACE_POINTS (default 10,000), independent of the MAX_ROWS
+    parse limit."""
+    raw = os.getenv("MAX_TRACE_POINTS")
+    if raw is None or raw.strip() == "":
+        return DEFAULT_MAX_TRACE_POINTS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_MAX_TRACE_POINTS
+
+
+def _sample_indices(count: int, limit: int) -> list[int] | None:
+    """Uniform stride indices over `count` items (real values, evenly
+    spread), or None when no cap is needed."""
+    if limit <= 0 or count <= limit:
+        return None
+    step = math.ceil(count / limit)
+    return list(range(0, count, step))
+
+
+def _take(values: list, indices: list[int]) -> list:
+    return [values[i] for i in indices]
+
+
 def build_trace(
         trace_spec: TraceSpec,
         rows: list[dict],
@@ -275,6 +303,16 @@ def build_trace(
 
     if trace_spec.aggregation:
         x, y = _aggregate(x, y, trace_spec.aggregation)
+
+    # Cap plotted points AFTER filters and aggregations. Stride sampling
+    # keeps real values and even coverage; geomap traces are capped in
+    # their own branch (lon/lat/z), so skip the generic cap for them.
+    if trace_spec.chart_type != "geomap":
+        cap_indices = _sample_indices(len(x), _max_trace_points())
+        if cap_indices is not None:
+            x = _take(x, cap_indices)
+            y = _take(y, cap_indices)
+            z = _take(z, cap_indices) if z is not None else None
 
     trace: dict = {}
     name = trace_spec.name
@@ -308,10 +346,17 @@ def build_trace(
             "z": z if z else [i + 1 for i in range(len(x))],
         })
     elif chart_type == "geomap":
+        lon = [_to_number(v) for v in _resolve_values(filtered, trace_spec.x_axis)]
+        lat = [_to_number(v) for v in _resolve_values(filtered, trace_spec.y_axis)]
+        geo_indices = _sample_indices(len(lon), _max_trace_points())
+        if geo_indices is not None:
+            lon = _take(lon, geo_indices)
+            lat = _take(lat, geo_indices)
+            z = _take(z, geo_indices) if z is not None else None
+
         trace.update({
             "type": "scattergeo", "mode": "markers",
-            "lon": [_to_number(v) for v in _resolve_values(filtered, trace_spec.x_axis)],
-            "lat": [_to_number(v) for v in _resolve_values(filtered, trace_spec.y_axis)],
+            "lon": lon, "lat": lat,
         })
         if z:
             trace["marker"] = {

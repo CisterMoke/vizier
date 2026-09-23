@@ -92,6 +92,19 @@ class TestInsightBundleModel:
 
         assert parsed == bundle
 
+    def test_round_trips_csv_options(self):
+        from vizier_ai.models.csv_options import CsvOptions
+
+        bundle = InsightBundle(
+            dataset_schema=make_schema(),
+            insights=[make_saved_insight()],
+            csv_options=CsvOptions(delimiter=";"),
+        )
+
+        parsed = InsightBundle.model_validate_json(bundle.model_dump_json())
+
+        assert parsed.csv_options == CsvOptions(delimiter=";")
+
 
 class FakeLLM:
     def __init__(self):

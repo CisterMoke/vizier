@@ -1,6 +1,7 @@
 """Tests for API-layer constraint wiring."""
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -272,6 +273,47 @@ class TestCsvOptionsEndpoints:
         real_data = captured[0]["real_data"]
         assert real_data["columns"] == ["county", "total"]
         assert real_data["rowCount"] == 2
+        # The options are echoed back so the client can persist them in a bundle
+        assert response.json()["csv_options"]["delimiter"] == ";"
+
+    def test_load_bundle_uses_csv_options_saved_in_bundle(self, client):
+        bundle = json.loads(make_bundle_json(mock=False))
+        bundle["csv_options"] = {"delimiter": ";"}
+        csv_content = "county;count\nKing;5\nPierce;10"
+
+        response = client.post(
+            "/api/load-bundle",
+            files={
+                "bundle": ("bundle.json", json.dumps(bundle).encode(), "application/json"),
+                "data": ("data.csv", csv_content.encode(), "text/csv"),
+            },
+            data={"dataFormat": "csv"},
+        )
+
+        assert response.status_code == 200
+        trace = response.json()["insights"][0]["chart_spec"]["plotlyData"][0]
+        assert trace["x"] == ["King", "Pierce"]
+
+    def test_load_bundle_request_csv_options_override_saved(self, client):
+        bundle = json.loads(make_bundle_json(mock=False))
+        bundle["csv_options"] = {"delimiter": "|"}
+        csv_content = "county;count\nKing;5\nPierce;10"
+
+        response = client.post(
+            "/api/load-bundle",
+            files={
+                "bundle": ("bundle.json", json.dumps(bundle).encode(), "application/json"),
+                "data": ("data.csv", csv_content.encode(), "text/csv"),
+            },
+            data={
+                "dataFormat": "csv",
+                "csvOptions": '{"delimiter": ";"}',
+            },
+        )
+
+        assert response.status_code == 200
+        trace = response.json()["insights"][0]["chart_spec"]["plotlyData"][0]
+        assert trace["x"] == ["King", "Pierce"]
 
     def test_generate_upload_rejects_invalid_csv_options(self, client, captured):
         response = client.post(
@@ -338,8 +380,8 @@ def make_large_insights_result(point_count: int = 10) -> Insights:
 
 
 @pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
-class TestStaticCharts:
-    """Charts above a renderer threshold are served as server-rendered SVGs."""
+class TestSessionInsights:
+    """Sessions store recipe-only insights, served by the static SVG endpoint."""
 
     @pytest.fixture
     def client(self, monkeypatch):
@@ -352,7 +394,6 @@ class TestStaticCharts:
         monkeypatch.setattr(
             static_render, "render_static_svg", lambda spec: "<svg>stub</svg>"
         )
-        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "5")
 
         return TestClient(app)
 
@@ -367,17 +408,6 @@ class TestStaticCharts:
             files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
             data={"schemaText": "numbers", "fileFormat": "csv"},
         )
-
-    def test_generate_marks_oversized_insight_static(self, client, monkeypatch):
-        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["sessionId"]
-        chart_spec = body["insights"][0]["chart_spec"]
-        assert chart_spec["isStatic"] is True
-        assert chart_spec["plotlyData"] is None
-        assert chart_spec["plotlyLayout"] is None
 
     def test_session_stores_recipe_only_insights(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
@@ -425,69 +455,6 @@ class TestStaticCharts:
             f"/api/session/{session_id}/insight/ins-1/svg"
         ).status_code == 404
 
-    def test_mock_sessions_never_become_static(self, client, monkeypatch):
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            return make_large_insights_result()
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
-        response = client.post("/api/generate", json={"schemaText": "numbers"})
-
-        chart_spec = response.json()["insights"][0]["chart_spec"]
-        assert chart_spec["isStatic"] is False
-        assert chart_spec["plotlyData"] is not None
-
-    def test_static_falls_back_to_interactive_without_kaleido(self, client, monkeypatch):
-        from vizier_ai.ui import static_render
-
-        monkeypatch.setattr(
-            static_render, "_KALEIDO_IMPORT_ERROR", ImportError("no kaleido")
-        )
-
-        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-
-        chart_spec = response.json()["insights"][0]["chart_spec"]
-        assert chart_spec["isStatic"] is False
-        assert chart_spec["plotlyData"] is not None
-
-    def test_edit_chart_returns_static_svg_over_threshold(self, client, monkeypatch):
-        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "1")
-        response = self.upload_csv(client, monkeypatch, Insights(insights=[]))
-        session_id = response.json()["sessionId"]
-
-        edited = client.post("/api/edit-chart", json={
-            "sessionId": session_id,
-            "traces": [{
-                "chart_type": "line",
-                "x_axis": "$.x",
-                "y_axis": "$.y",
-            }],
-        })
-
-        assert edited.status_code == 200
-        body = edited.json()
-        assert body["isStatic"] is True
-        assert body["staticSvg"] == "<svg>stub</svg>"
-        assert body["plotlyData"] is None
-
-    def test_edit_chart_returns_interactive_below_threshold(self, client, monkeypatch):
-        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "100")
-        response = self.upload_csv(client, monkeypatch, Insights(insights=[]))
-        session_id = response.json()["sessionId"]
-
-        edited = client.post("/api/edit-chart", json={
-            "sessionId": session_id,
-            "traces": [{
-                "chart_type": "line",
-                "x_axis": "$.x",
-                "y_axis": "$.y",
-            }],
-        })
-
-        body = edited.json()
-        assert body["isStatic"] is False
-        assert body["staticSvg"] is None
-        assert body["plotlyData"] is not None
-
     def test_regenerate_updates_stored_insights(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
         session_id = response.json()["sessionId"]
@@ -502,3 +469,35 @@ class TestStaticCharts:
 
         stored = _get_session(session_id)["insights"]
         assert stored[0].chart_spec.plotlyData is None
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestRateLimitExemptions:
+    """Rate limits protect the LLM API only: page loads (static assets,
+    config) must never consume the budget."""
+
+    @pytest.fixture
+    def tight_client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from vizier_ai.ui import app as app_module
+        from vizier_ai.ui.ratelimit import RateLimiter, RateLimitConfig
+
+        tight = RateLimiter(RateLimitConfig(max_requests=3, window_seconds=60))
+        monkeypatch.setattr(app_module, "_per_ip_limiter", tight)
+        return TestClient(app_module.app)
+
+    def test_static_requests_are_not_limited(self, tight_client):
+        statuses = [tight_client.get("/").status_code for _ in range(6)]
+        assert all(status != 429 for status in statuses)
+
+    def test_config_endpoint_is_not_limited(self, tight_client):
+        statuses = [tight_client.get("/api/config").status_code for _ in range(6)]
+        assert all(status != 429 for status in statuses)
+
+    def test_api_requests_still_limited(self, tight_client):
+        for _ in range(3):
+            assert tight_client.get("/api/session/s/insight/i/svg").status_code == 404
+
+        response = tight_client.get("/api/session/s/insight/i/svg")
+        assert response.status_code == 429

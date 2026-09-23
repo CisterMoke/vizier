@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from vizier_ai.chart_builder import _resolve_values, build_plotly_spec, build_trace
@@ -203,3 +205,114 @@ class TestScatterGlSwitch:
             y_index=1,
         )
         assert trace["type"] == "scattergl"
+
+
+class TestTracePointCap:
+    """MAX_TRACE_POINTS caps plotted points per trace (default 10k) using
+    uniform stride sampling of real values. Applied after filters and
+    aggregations; separate from the MAX_ROWS parse limit."""
+
+    @staticmethod
+    def make_rows(count: int) -> list[dict]:
+        return [{"x": i, "y": i * 2, "z": i * 3} for i in range(count)]
+
+    def test_large_traces_are_stride_sampled(self):
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(25_000),
+            color_index=0,
+            y_index=1,
+        )
+
+        # step = ceil(25000/10000) = 3 -> 8334 points
+        assert len(trace["x"]) == 8334
+        assert len(trace["y"]) == 8334
+        assert trace["x"][0] == 0
+        assert trace["x"][1] == 3
+        assert trace["y"][1] == 6
+
+    def test_small_traces_are_untouched(self):
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(100),
+            color_index=0,
+            y_index=1,
+        )
+
+        assert len(trace["x"]) == 100
+        assert trace["x"] == list(range(100))
+
+    def test_cap_applies_after_aggregation(self):
+        rows = [{"cat": f"c{i % 50}", "v": 1} for i in range(25_000)]
+        trace = build_trace(
+            TraceSpec(chart_type="bar", x_axis="$.cat", y_axis="$.v", aggregation="sum"),
+            rows,
+            color_index=0,
+            y_index=1,
+        )
+
+        # 50 aggregated categories: never capped
+        assert len(trace["x"]) == 50
+
+    def test_cap_applies_after_filter(self):
+        rows = self.make_rows(25_000)
+        trace = build_trace(
+            TraceSpec(
+                chart_type="scatter",
+                x_axis="$.x",
+                y_axis="$.y",
+                filter=TraceFilter(field="$.x", op="lt", value=20_000),
+            ),
+            rows,
+            color_index=0,
+            y_index=1,
+        )
+
+        assert len(trace["x"]) == 10_000
+
+    def test_cap_is_configurable(self, monkeypatch):
+        monkeypatch.setenv("MAX_TRACE_POINTS", "5")
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(10),
+            color_index=0,
+            y_index=1,
+        )
+
+        assert len(trace["x"]) == 5
+        assert trace["x"] == [0, 2, 4, 6, 8]
+
+    def test_cap_can_be_disabled(self, monkeypatch):
+        monkeypatch.setenv("MAX_TRACE_POINTS", "0")
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(25_000),
+            color_index=0,
+            y_index=1,
+        )
+
+        assert len(trace["x"]) == 25_000
+
+    def test_geomap_lon_lat_and_color_capped_consistently(self):
+        rows = [
+            {"lon": i * 0.001, "lat": 40.0 + i * 0.0001, "intensity": i}
+            for i in range(25_000)
+        ]
+        trace = build_trace(
+            TraceSpec(
+                chart_type="geomap",
+                x_axis="$.lon",
+                y_axis="$.lat",
+                z_axis="$.intensity",
+            ),
+            rows,
+            color_index=0,
+            y_index=1,
+        )
+
+        assert len(trace["lon"]) == 8334
+        assert len(trace["lat"]) == 8334
+        assert len(trace["marker"]["color"]) == 8334
+        # lon/lat pairs stay aligned with their source rows
+        assert trace["lon"][1] == pytest.approx(3 * 0.001)
+        assert trace["lat"][1] == pytest.approx(40.0 + 3 * 0.0001)

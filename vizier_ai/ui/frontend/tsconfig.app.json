@@ -19,7 +19,6 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "preact",
 
     /* Linting */
     "noUnusedLocals": true,

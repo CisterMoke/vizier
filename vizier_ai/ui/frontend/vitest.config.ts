@@ -1,19 +1,12 @@
 import { defineConfig } from 'vitest/config'
-import preact from '@preact/preset-vite'
 
 export default defineConfig({
-  plugins: [preact()],
-  resolve: {
-    alias: {
-      'react-dom/test-utils': 'preact/test-utils',
-      'react-dom': 'preact/compat',
-      'react/jsx-runtime': 'preact/jsx-runtime',
-      react: 'preact/compat'
-    }
-  },
+  esbuild: { jsx: 'automatic' },
   test: {
     environment: 'jsdom',
     globals: true,
+    testTimeout: 30000,
+    fileParallelism: false,
     setupFiles: './src/test/setup.ts',
     exclude: ['e2e/**', 'node_modules/**'],
     env: {

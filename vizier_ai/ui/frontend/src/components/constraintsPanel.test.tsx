@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/preact'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { ConstraintsPanel } from './ConstraintsPanel'
 import { EMPTY_CONSTRAINTS, type ConstraintsState } from '../domain/constraints'

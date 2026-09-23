@@ -1,4 +1,5 @@
 import type { InsightCandidate, TraceSpec } from './types'
+import type { CsvOptionsPayload } from './csv'
 
 export interface BundleContext {
   schema: unknown
@@ -17,11 +18,13 @@ export interface DownloadBundle {
   schema: unknown
   data_profile?: unknown
   insights: SavedInsightJson[]
+  csv_options?: CsvOptionsPayload | null
 }
 
 export function buildDownloadBundle(
   insights: InsightCandidate[],
-  context: BundleContext | null
+  context: BundleContext | null,
+  csvOptions: CsvOptionsPayload | null = null
 ): DownloadBundle | null {
   if (!context?.schema) {
     return null
@@ -35,7 +38,8 @@ export function buildDownloadBundle(
       metadata: insight.metadata,
       traces: insight.chart_spec.traces,
       mock_seed: insight.mock_seed ?? null
-    }))
+    })),
+    csv_options: csvOptions
   }
   if (context.dataProfile) {
     bundle.data_profile = context.dataProfile

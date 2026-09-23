@@ -1,5 +1,6 @@
 import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Title, Group } from '@mantine/core'
-import { useEffect, useState } from 'preact/hooks'
+import type { FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { fetchConfig, type ServerConfig } from '../services/apiClient'
 import type { InsightConstraintsPayload } from '../domain/constraints'
 import { buildCsvOptionsPayload, DEFAULT_CSV_OPTIONS, type CsvOptionsPayload, type CsvOptionsState } from '../domain/csv'
@@ -41,6 +42,13 @@ interface DataInputPanelProps {
   isImporting?: boolean
 }
 
+const inferDataFormat = (filename: string): FileFormat => {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith('.jsonl')) return 'jsonl'
+  if (lower.endsWith('.json')) return 'json'
+  return 'csv'
+}
+
 export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImportBundle, isImporting }: DataInputPanelProps) {
   const [schemaText, setSchemaText] = useState('')
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('none')
@@ -52,9 +60,7 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
   const [config, setConfig] = useState<ServerConfig | null>(null)
   const [bundleFile, setBundleFile] = useState<File | null>(null)
   const [bundleDataFile, setBundleDataFile] = useState<File | null>(null)
-  const [bundleDataFormat, setBundleDataFormat] = useState<FileFormat>('csv')
   const [csvOptions, setCsvOptions] = useState<CsvOptionsState>(DEFAULT_CSV_OPTIONS)
-  const [bundleCsvOptions, setBundleCsvOptions] = useState<CsvOptionsState>(DEFAULT_CSV_OPTIONS)
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -82,7 +88,7 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
     setFile(uploadedFile)
   }
 
-  const handleSubmit = async (event: Event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (schemaText.trim().length === 0) return
 
@@ -104,11 +110,11 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
   const handleLoadBundle = async () => {
     if (!bundleFile || !onImportBundle) return
 
+    // CSV parsing options are restored from the bundle itself.
     await onImportBundle(
       bundleFile,
       bundleDataFile ?? undefined,
-      bundleDataFormat,
-      bundleDataFormat === 'csv' ? buildCsvOptionsPayload(bundleCsvOptions) : undefined
+      bundleDataFile ? inferDataFormat(bundleDataFile.name) : undefined
     )
   }
 
@@ -122,7 +128,7 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
           </Text>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(event) => void handleSubmit(event)}>
           <Stack gap="md">
             <Textarea
               label="Data description"
@@ -261,58 +267,45 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
         </form>
 
         {onImportBundle ? (
-          <div>
-            <Text fw={500} size="sm" mb="xs">Load saved bundle</Text>
-            <Text c="dimmed" size="xs" mb="sm">
-              Restore a previously downloaded insight bundle, optionally with a dataset to render against.
-            </Text>
-            <Stack gap="sm">
-              <FileInput
-                label="Saved bundle file"
-                placeholder="vizier-insight-bundle.json"
-                value={bundleFile}
-                onChange={setBundleFile}
-                accept=".json"
-                disabled={isImporting}
-                name="bundle-file"
-              />
-              <Group gap="md" align="flex-end">
+          <Group gap="sm" align="flex-end" mt="xs">
+            <FileInput
+              label="Load bundle"
+              placeholder="vizier-insight-bundle.json"
+              value={bundleFile}
+              onChange={setBundleFile}
+              accept=".json"
+              disabled={isImporting}
+              size="sm"
+              variant="unstyled"
+              name="bundle-file"
+              style={{ flex: 1 }}
+            />
+            {bundleFile ? (
+              <>
                 <FileInput
-                  label="Attach data file (optional)"
+                  label="Attach dataset (optional)"
                   placeholder="Choose file"
                   value={bundleDataFile}
                   onChange={setBundleDataFile}
                   accept=".csv,.json,.jsonl,.txt"
                   disabled={isImporting}
-                  style={{ flex: 1 }}
+                  size="sm"
+                  variant="unstyled"
                   name="bundle-data-file"
+                  style={{ flex: 1 }}
                 />
-                <Select
-                  label="Format"
-                  data={[
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON array' },
-                    { value: 'jsonl', label: 'JSONL' }
-                  ]}
-                  value={bundleDataFormat}
-                  onChange={(value) => setBundleDataFormat((value as FileFormat) ?? 'csv')}
-                  w={140}
+                <Button
+                  size="sm"
+                  variant="light"
+                  onClick={handleLoadBundle}
+                  loading={isImporting}
                   disabled={isImporting}
-                />
-              </Group>
-              {bundleDataFormat === 'csv' ? (
-                <CsvOptionsSection value={bundleCsvOptions} onChange={setBundleCsvOptions} disabled={isImporting} />
-              ) : null}
-              <Button
-                variant="light"
-                onClick={handleLoadBundle}
-                loading={isImporting}
-                disabled={!bundleFile || isImporting}
-              >
-                {isImporting ? 'Loading bundle...' : 'Load bundle'}
-              </Button>
-            </Stack>
-          </div>
+                >
+                  Load
+                </Button>
+              </>
+            ) : null}
+          </Group>
         ) : null}
       </Stack>
     </Paper>

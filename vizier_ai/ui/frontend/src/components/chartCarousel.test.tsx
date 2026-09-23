@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/preact'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import { ChartCarousel } from './ChartCarousel'
@@ -20,12 +20,6 @@ vi.mock('../services/apiClient', () => ({
   editChart: vi.fn().mockResolvedValue({ plotlyData: [], plotlyLayout: {} }),
   insightSvgUrl: (sessionId: string, insightId: string) =>
     `/api/session/${sessionId}/insight/${insightId}/svg`,
-}))
-
-// react-remove-scroll ships CJS whose require('react') bypasses the preact
-// alias under vitest; its scroll lock is irrelevant to these tests.
-vi.mock('react-remove-scroll', () => ({
-  RemoveScroll: ({ children }: { children: unknown }) => <>{children}</>,
 }))
 
 const insights: InsightCandidate[] = [

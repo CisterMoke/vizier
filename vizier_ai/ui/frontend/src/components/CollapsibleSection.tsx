@@ -1,12 +1,12 @@
-import { useState } from 'preact/hooks'
-import type { ComponentChildren } from 'preact'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Group, Stack, Text, UnstyledButton } from '@mantine/core'
 
 interface CollapsibleSectionProps {
   label: string
   description?: string
   defaultOpened?: boolean
-  children: ComponentChildren
+  children: ReactNode
 }
 
 export function CollapsibleSection({ label, description, defaultOpened = false, children }: CollapsibleSectionProps) {

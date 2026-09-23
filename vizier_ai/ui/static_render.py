@@ -83,29 +83,26 @@ def is_static_rendering_available() -> bool:
     return _KALEIDO_IMPORT_ERROR is None
 
 
-def render_static_svg(plotly_spec: dict) -> str:
-    """Render a plotly figure dict to an SVG string via kaleido."""
+def render_static_svg(plotly_spec: dict) -> bytes:
+    """Render a plotly figure dict to an SVG image (bytes) via kaleido."""
     if _KALEIDO_IMPORT_ERROR is not None:
         raise StaticRenderUnavailableError(
             f"Static rendering is unavailable: {_KALEIDO_IMPORT_ERROR}"
         ) from _KALEIDO_IMPORT_ERROR
 
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            out_path = Path(tmp_dir) / "chart.svg"
-            kaleido.write_fig_sync(
-                plotly_spec,
-                path=str(out_path),
-                opts={
-                    "format": "svg",
-                    "width": STATIC_IMAGE_WIDTH,
-                    "height": STATIC_IMAGE_HEIGHT,
-                },
-            )
-            return out_path.read_text()
+        svg = kaleido.calc_fig_sync(
+            plotly_spec,
+            opts={
+                "format": "svg",
+                "width": STATIC_IMAGE_WIDTH,
+                "height": STATIC_IMAGE_HEIGHT,
+            },
+        )
+        return svg
     except StaticRenderUnavailableError:
         raise
     except Exception as exc:
         raise StaticRenderUnavailableError(
-            f"Static rendering failed (is Chrome installed? try kaleido_get_chrome): {exc}"
+            f"Static rendering failed: {exc}"
         ) from exc

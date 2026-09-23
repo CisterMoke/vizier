@@ -1,9 +1,11 @@
 import { Badge, Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox } from '@mantine/core'
-import { useCallback, useMemo, useState } from 'preact/hooks'
+import { useCallback, useMemo, useState } from 'react'
 import type { InsightCandidate, TraceSpec } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
 import { editChart, insightSvgUrl } from '../services/apiClient'
 
+// react-plotly.js ships CJS; bundler interop can deliver the module wrapper
+// ({ default: Component }) instead of the component itself.
 const Plot =
   (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
 
@@ -45,22 +47,18 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
     setActiveIndex((current) => (current - 1 + insights.length) % insights.length)
   }, [insights.length])
 
-  if (insights.length === 0) {
-    return null
-  }
-
-  const insight = insights[activeIndex]
-
-  if (!insight) {
-    return null
-  }
-
-  const activePlotlyData = editedPlotlyData ?? insight.chart_spec.plotlyData
-  const activePlotlyLayout = editedPlotlyLayout ?? insight.chart_spec.plotlyLayout
+  // All hooks must run before any conditional return (Rules of Hooks).
+  const insight = insights[activeIndex] ?? null
+  const activePlotlyData = editedPlotlyData ?? insight?.chart_spec.plotlyData ?? null
+  const activePlotlyLayout = editedPlotlyLayout ?? insight?.chart_spec.plotlyLayout ?? null
   const plotLayout = useMemo(
     () => ({ ...(activePlotlyLayout as Partial<Plotly.Layout>), autosize: true }),
     [activePlotlyLayout]
   )
+
+  if (insights.length === 0 || !insight) {
+    return null
+  }
 
   const showStaticChart = editedStaticSvg !== null
     || (insight.chart_spec.isStatic === true && editedPlotlyData === null)

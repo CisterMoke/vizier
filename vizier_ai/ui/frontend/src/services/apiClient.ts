@@ -9,6 +9,7 @@ export interface GenerateResponse {
   sessionId: string
   insights: InsightCandidate[]
   context: BundleContext | null
+  csvOptions?: CsvOptionsPayload | null
 }
 
 export interface ServerConfig {
@@ -57,7 +58,8 @@ async function parseResponse(response: Response): Promise<GenerateResponse> {
     context: {
       schema: raw.dataset_schema ?? null,
       dataProfile: raw.data_profile ?? null
-    }
+    },
+    csvOptions: raw.csv_options ?? null
   }
 }
 

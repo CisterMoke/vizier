@@ -54,4 +54,16 @@ describe('buildDownloadBundle', () => {
     expect(buildDownloadBundle([insight], null)).toBeNull()
     expect(buildDownloadBundle([insight], { schema: null, dataProfile: null })).toBeNull()
   })
+
+  it('persists csv options so loading needs no manual configuration', () => {
+    const bundle = buildDownloadBundle([insight], context, { delimiter: ';' })!
+
+    expect(bundle.csv_options).toEqual({ delimiter: ';' })
+  })
+
+  it('defaults to null csv options when none were used', () => {
+    const bundle = buildDownloadBundle([insight], context)!
+
+    expect(bundle.csv_options).toBeNull()
+  })
 })

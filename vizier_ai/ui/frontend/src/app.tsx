@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { CollapsibleSection } from './components/CollapsibleSection'
+import { ChartErrorBoundary } from './components/ChartErrorBoundary'
 import { ConstraintsPanel } from './components/ConstraintsPanel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
@@ -27,6 +28,7 @@ export function App() {
   const handleGenerate = async (request: GenerateRequest) => {
     workspace.setInsights([])
     workspace.setSessionId('')
+    workspace.setCsvOptions(null)
     setGenerationError(null)
     setStatusMessage(null)
     setHasRealData(false)
@@ -40,6 +42,7 @@ export function App() {
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
       workspace.setBundleContext(result.context)
+      workspace.setCsvOptions(result.csvOptions ?? null)
       setHasRealData(request.dataSource.mode !== 'none')
       setStatusMessage(null)
     } catch (error) {
@@ -91,6 +94,7 @@ export function App() {
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
       workspace.setBundleContext(result.context)
+      workspace.setCsvOptions(result.csvOptions ?? null)
       setHasRealData(!!data)
       setStatusMessage(null)
     } catch (error) {
@@ -104,7 +108,7 @@ export function App() {
   }
 
   const handleDownloadBundle = () => {
-    const bundle = buildDownloadBundle(workspace.insights, workspace.bundleContext)
+    const bundle = buildDownloadBundle(workspace.insights, workspace.bundleContext, workspace.csvOptions)
     if (!bundle) return
 
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
@@ -191,13 +195,15 @@ export function App() {
             </Text>
           ) : null}
 
-          <Suspense fallback={<Text c="dimmed" size="sm">Loading charts...</Text>}>
-            <ChartCarousel
-              insights={workspace.insights}
-              sessionId={workspace.sessionId}
-              onDelete={handleDeleteCard}
-            />
-          </Suspense>
+          <ChartErrorBoundary>
+            <Suspense fallback={<Text c="dimmed" size="sm">Loading charts...</Text>}>
+              <ChartCarousel
+                insights={workspace.insights}
+                sessionId={workspace.sessionId}
+                onDelete={handleDeleteCard}
+              />
+            </Suspense>
+          </ChartErrorBoundary>
         </Stack>
       </Container>
     </div>

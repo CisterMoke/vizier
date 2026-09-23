@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/preact'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 
 vi.mock('react-plotly.js', () => ({
@@ -179,8 +179,7 @@ it('loads a bundle through the import section', async () => {
   const bundleFile = new File(['{}'], 'bundle.json', { type: 'application/json' })
   selectFile(bundleInput(), bundleFile)
 
-  const loadButton = screen.getByRole('button', { name: /^load bundle$/i })
-  await waitFor(() => expect(loadButton).not.toBeDisabled())
+  const loadButton = await screen.findByRole('button', { name: /^load$/i })
   fireEvent.click(loadButton)
 
   await waitFor(() => expect(loadBundleMock).toHaveBeenCalledTimes(1), { timeout: 10000 })

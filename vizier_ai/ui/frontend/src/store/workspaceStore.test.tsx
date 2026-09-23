@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/preact'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { useWorkspaceStore } from './workspaceStore'
 import type { InsightCandidate } from '../domain/types'
 

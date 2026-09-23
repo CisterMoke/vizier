@@ -98,11 +98,11 @@ class TestRenderStaticSvg:
     def test_writes_renders_and_reads_back_svg(self, monkeypatch):
         monkeypatch.setattr(static_render, "_KALEIDO_IMPORT_ERROR", None)
 
-        def fake_write(fig, path=None, opts=None, **kwargs):
-            Path(path).write_text("<svg>stub</svg>")
+        def fake_calc(fig, opts=None, **kwargs):
+            return b"<svg>stub</svg>"
 
-        monkeypatch.setattr(static_render.kaleido, "write_fig_sync", fake_write)
+        monkeypatch.setattr(static_render.kaleido, "calc_fig_sync", fake_calc)
 
         svg = static_render.render_static_svg({"data": [], "layout": {}})
 
-        assert svg == "<svg>stub</svg>"
+        assert svg == b"<svg>stub</svg>"

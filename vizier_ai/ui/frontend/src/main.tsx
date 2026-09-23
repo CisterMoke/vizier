@@ -1,4 +1,4 @@
-import { render } from 'preact'
+import { createRoot } from 'react-dom/client'
 import { MantineProvider, createTheme } from '@mantine/core'
 import '@mantine/core/styles.css'
 import './index.css'
@@ -10,9 +10,8 @@ const theme = createTheme({
   headings: { fontFamily: 'Space Grotesk, IBM Plex Sans, sans-serif' }
 })
 
-render(
+createRoot(document.getElementById('app')!).render(
   <MantineProvider theme={theme} defaultColorScheme="dark">
     <App />
-  </MantineProvider>,
-  document.getElementById('app')!
+  </MantineProvider>
 )
