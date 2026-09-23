@@ -1,13 +1,18 @@
-import { useState } from 'preact/hooks'
+import { lazy, Suspense, useState } from 'react'
 import { Alert, Badge, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core'
-import { ChartCarousel } from './components/ChartCarousel'
+import { CollapsibleSection } from './components/CollapsibleSection'
 import { ConstraintsPanel } from './components/ConstraintsPanel'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
 import { callGenerate, regenerate, loadBundle } from './services/apiClient'
+import type { CsvOptionsPayload } from './domain/csv'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
 import { buildDownloadBundle } from './domain/bundle'
 import { useWorkspaceStore } from './store/workspaceStore'
+
+const ChartCarousel = lazy(() =>
+  import('./components/ChartCarousel').then((m) => ({ default: m.ChartCarousel }))
+)
 
 export function App() {
   const workspace = useWorkspaceStore()
@@ -69,14 +74,19 @@ export function App() {
     }
   }
 
-  const handleImportBundle = async (bundle: File, data?: File, dataFormat?: string) => {
+  const handleImportBundle = async (
+    bundle: File,
+    data?: File,
+    dataFormat?: string,
+    csvOptions?: CsvOptionsPayload
+  ) => {
     setGenerationError(null)
     setStatusMessage('Loading saved bundle...')
 
     setIsImporting(true)
 
     try {
-      const result = await loadBundle(bundle, data, dataFormat)
+      const result = await loadBundle(bundle, data, dataFormat, csvOptions)
 
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
@@ -144,11 +154,16 @@ export function App() {
             isImporting={isImporting}
           />
 
-          <ConstraintsPanel
-            value={constraints}
-            onChange={setConstraints}
-            disabled={isGenerating || isRegenerating}
-          />
+          <CollapsibleSection
+            label="Advanced options"
+            description="Nudge the model: chart types, fields, and free-form guidance."
+          >
+            <ConstraintsPanel
+              value={constraints}
+              onChange={setConstraints}
+              disabled={isGenerating || isRegenerating}
+            />
+          </CollapsibleSection>
 
           <Group justify="flex-end">
             <Button
@@ -176,11 +191,13 @@ export function App() {
             </Text>
           ) : null}
 
-          <ChartCarousel
-            insights={workspace.insights}
-            sessionId={workspace.sessionId}
-            onDelete={handleDeleteCard}
-          />
+          <Suspense fallback={<Text c="dimmed" size="sm">Loading charts...</Text>}>
+            <ChartCarousel
+              insights={workspace.insights}
+              sessionId={workspace.sessionId}
+              onDelete={handleDeleteCard}
+            />
+          </Suspense>
         </Stack>
       </Container>
     </div>

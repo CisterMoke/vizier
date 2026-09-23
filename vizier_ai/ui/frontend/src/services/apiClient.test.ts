@@ -1,4 +1,5 @@
 import { extractErrorMessage, loadBundle } from './apiClient'
+import type { CsvOptionsPayload } from '../domain/csv'
 
 describe('extractErrorMessage', () => {
   it('extracts the detail from a JSON error body', () => {
@@ -66,5 +67,19 @@ describe('loadBundle', () => {
     const body = fetchMock.mock.calls[0][1].body as FormData
     expect(body.get('data')).toBeNull()
     expect(body.get('dataFormat')).toBe('csv')
+  })
+
+  it('sends csv options when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sessionId: 's', insights: [], dataset_schema: null, data_profile: null })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const dataFile = new File(['a;b'], 'data.csv', { type: 'text/csv' })
+    await loadBundle(new File(['{}'], 'bundle.json'), dataFile, 'csv', { delimiter: ';' })
+
+    const body = fetchMock.mock.calls[0][1].body as FormData
+    expect(body.get('csvOptions')).toBe('{"delimiter":";"}')
   })
 })

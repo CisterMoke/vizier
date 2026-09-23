@@ -2,6 +2,8 @@ import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Tit
 import { useEffect, useState } from 'preact/hooks'
 import { fetchConfig, type ServerConfig } from '../services/apiClient'
 import type { InsightConstraintsPayload } from '../domain/constraints'
+import { buildCsvOptionsPayload, DEFAULT_CSV_OPTIONS, type CsvOptionsPayload, type CsvOptionsState } from '../domain/csv'
+import { CsvOptionsSection } from './CsvOptionsSection'
 
 export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
 export type FileFormat = 'csv' | 'json' | 'jsonl'
@@ -28,13 +30,14 @@ export interface GenerateRequest {
     sql?: SqlConfig
   }
   constraints?: InsightConstraintsPayload
+  csvOptions?: CsvOptionsPayload
 }
 
 interface DataInputPanelProps {
   onGenerate: (request: GenerateRequest) => Promise<void>
   isGenerating: boolean
   hasInsights?: boolean
-  onImportBundle?: (bundle: File, data?: File, dataFormat?: string) => Promise<void>
+  onImportBundle?: (bundle: File, data?: File, dataFormat?: string, csvOptions?: CsvOptionsPayload) => Promise<void>
   isImporting?: boolean
 }
 
@@ -50,6 +53,8 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
   const [bundleFile, setBundleFile] = useState<File | null>(null)
   const [bundleDataFile, setBundleDataFile] = useState<File | null>(null)
   const [bundleDataFormat, setBundleDataFormat] = useState<FileFormat>('csv')
+  const [csvOptions, setCsvOptions] = useState<CsvOptionsState>(DEFAULT_CSV_OPTIONS)
+  const [bundleCsvOptions, setBundleCsvOptions] = useState<CsvOptionsState>(DEFAULT_CSV_OPTIONS)
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -89,14 +94,22 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
         fileFormat,
         rest: dataSourceMode === 'rest' ? restConfig : undefined,
         sql: dataSourceMode === 'sql' ? sqlConfig : undefined
-      }
+      },
+      csvOptions: dataSourceMode === 'file' && fileFormat === 'csv'
+        ? buildCsvOptionsPayload(csvOptions)
+        : undefined
     })
   }
 
   const handleLoadBundle = async () => {
     if (!bundleFile || !onImportBundle) return
 
-    await onImportBundle(bundleFile, bundleDataFile ?? undefined, bundleDataFormat)
+    await onImportBundle(
+      bundleFile,
+      bundleDataFile ?? undefined,
+      bundleDataFormat,
+      bundleDataFormat === 'csv' ? buildCsvOptionsPayload(bundleCsvOptions) : undefined
+    )
   }
 
   return (
@@ -172,6 +185,9 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
                     ? `Large files are automatically sampled to the first ${maxRows} rows.`
                     : ''}
                 </Text>
+                {fileFormat === 'csv' ? (
+                  <CsvOptionsSection value={csvOptions} onChange={setCsvOptions} disabled={isGenerating} />
+                ) : null}
               </Stack>
             ) : null}
 
@@ -284,6 +300,9 @@ export function DataInputPanel({ onGenerate, isGenerating, hasInsights, onImport
                   disabled={isImporting}
                 />
               </Group>
+              {bundleDataFormat === 'csv' ? (
+                <CsvOptionsSection value={bundleCsvOptions} onChange={setBundleCsvOptions} disabled={isImporting} />
+              ) : null}
               <Button
                 variant="light"
                 onClick={handleLoadBundle}

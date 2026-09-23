@@ -2,6 +2,7 @@ import type { InsightCandidate } from '../domain/types'
 import { parseInsights } from '../domain/schemas'
 import type { BundleContext } from '../domain/bundle'
 import type { InsightConstraintsPayload } from '../domain/constraints'
+import type { CsvOptionsPayload } from '../domain/csv'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
@@ -71,6 +72,9 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     if (request.constraints) {
       formData.append('constraints', JSON.stringify(request.constraints))
     }
+    if (request.csvOptions) {
+      formData.append('csvOptions', JSON.stringify(request.csvOptions))
+    }
 
     const response = await fetch(`${baseUrl}/api/generate-upload`, {
       method: 'POST',
@@ -131,6 +135,7 @@ export const loadBundle = async (
   bundle: File,
   data?: File,
   dataFormat: string = 'csv',
+  csvOptions?: CsvOptionsPayload,
   backendUrl?: string
 ): Promise<GenerateResponse> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
@@ -140,6 +145,9 @@ export const loadBundle = async (
   formData.append('dataFormat', dataFormat)
   if (data) {
     formData.append('data', data)
+  }
+  if (csvOptions) {
+    formData.append('csvOptions', JSON.stringify(csvOptions))
   }
 
   const response = await fetch(`${baseUrl}/api/load-bundle`, {

@@ -85,6 +85,7 @@ it('sends constraints with the generate request', async () => {
   fireEvent.input(screen.getByLabelText(/data description/i), {
     target: { value: 'orders(id int, total decimal)' }
   })
+  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }))
   fireEvent.input(screen.getByLabelText(/guidance/i), {
     target: { value: '  focus on trends  ' }
   })
@@ -119,6 +120,7 @@ it('sends constraints with the regenerate request', async () => {
 
   await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
 
+  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }))
   fireEvent.input(screen.getByLabelText(/guidance/i), {
     target: { value: 'compare regions' }
   })

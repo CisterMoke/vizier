@@ -11,6 +11,9 @@ from typing import Any
 
 import pandas as pd
 
+from vizier_ai.models.csv_options import CsvOptions
+
+
 def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
     """Convert a pandas DataFrame to the standard RawDataResult dict."""
     records = json.loads(df.to_json(orient="records", force_ascii=False))
@@ -18,9 +21,21 @@ def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
     return {"format": fmt, "columns": columns, "rows": records, "rowCount": len(records)}
 
 
-def parse_csv(source: str | Path, max_rows: int = None) -> dict[str, Any]:
+def parse_csv(source: str | Path, max_rows: int = None, csv_options: CsvOptions | None = None) -> dict[str, Any]:
     """Parse CSV from a file path or raw text using pandas."""
-    df = pd.read_csv(source, nrows=max_rows)
+    options = csv_options or CsvOptions()
+    handle = io.StringIO(source) if isinstance(source, str) else source
+    df = pd.read_csv(
+        handle,
+        nrows=max_rows,
+        sep=options.delimiter,
+        quotechar=options.quote_char,
+        header=0 if options.header else None,
+        skiprows=options.skip_rows,
+        encoding=options.encoding if isinstance(source, Path) else None,
+    )
+    if not options.header:
+        df.columns = [f"column_{i + 1}" for i in range(len(df.columns))]
     return _df_to_result(df, "csv")
 
 
@@ -73,17 +88,19 @@ def parse_jsonl(source: str | Path, max_rows: int = None) -> dict[str, Any]:
     return _df_to_result(df, "jsonl")
 
 
-def parse_data(source: str | Path, format_hint: str = "csv", max_rows: int = None) -> dict[str, Any]:
+def parse_data(source: str | Path, format_hint: str = "csv", max_rows: int = None, csv_options: CsvOptions | None = None) -> dict[str, Any]:
     """Parse raw data from a file path or text using the specified format.
 
     Args:
         source: File path (Path) or raw text (str).
         format_hint: "csv", "json", or "jsonl".
         max_rows: Maximum number of rows to parse (safety limit).
+        csv_options: Optional CSV parsing options (delimiter, quote char,
+            header, skip rows, encoding). Only applied to CSV.
     """
     try:
         if format_hint == "csv":
-            return parse_csv(source, max_rows)
+            return parse_csv(source, max_rows, csv_options=csv_options)
         elif format_hint == "json":
             return parse_json(source, max_rows)
         elif format_hint == "jsonl":

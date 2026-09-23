@@ -232,3 +232,92 @@ class TestLoadBundleEndpoint:
 
         assert response.status_code == 422
         assert "Invalid bundle" in response.json()["detail"]
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestCsvOptionsEndpoints:
+    @pytest.fixture
+    def captured(self, monkeypatch):
+        calls = []
+
+        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
+            calls.append({"schema_text": schema_text, "real_data": real_data})
+            return Insights(insights=[])
+
+        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        return calls
+
+    @pytest.fixture
+    def client(self, captured):
+        from fastapi.testclient import TestClient
+
+        from vizier_ai.ui.app import app
+
+        return TestClient(app)
+
+    def test_generate_upload_applies_csv_options(self, client, captured):
+        csv_content = "county;total\nKing;100\nPierce;200"
+
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", csv_content.encode(), "text/csv")},
+            data={
+                "schemaText": "counties",
+                "fileFormat": "csv",
+                "csvOptions": '{"delimiter": ";"}',
+            },
+        )
+
+        assert response.status_code == 200
+        real_data = captured[0]["real_data"]
+        assert real_data["columns"] == ["county", "total"]
+        assert real_data["rowCount"] == 2
+
+    def test_generate_upload_rejects_invalid_csv_options(self, client, captured):
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"a,b\n1,2", "text/csv")},
+            data={
+                "schemaText": "counties",
+                "fileFormat": "csv",
+                "csvOptions": '{"delimiter": ";;"}',
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Invalid CSV options" in response.json()["detail"]
+
+    def test_load_bundle_applies_csv_options(self, client):
+        csv_content = "county;count\nKing;5\nPierce;10"
+
+        response = client.post(
+            "/api/load-bundle",
+            files={
+                "bundle": ("bundle.json", make_bundle_json(mock=False).encode(), "application/json"),
+                "data": ("data.csv", csv_content.encode(), "text/csv"),
+            },
+            data={
+                "dataFormat": "csv",
+                "csvOptions": '{"delimiter": ";"}',
+            },
+        )
+
+        assert response.status_code == 200
+        trace = response.json()["insights"][0]["chart_spec"]["plotlyData"][0]
+        assert trace["x"] == ["King", "Pierce"]
+
+    def test_load_bundle_without_csv_options_yields_empty_rows(self, client):
+        csv_content = "county;count\nKing;5\nPierce;10"
+
+        response = client.post(
+            "/api/load-bundle",
+            files={
+                "bundle": ("bundle.json", make_bundle_json(mock=False).encode(), "application/json"),
+                "data": ("data.csv", csv_content.encode(), "text/csv"),
+            },
+            data={"dataFormat": "csv"},
+        )
+
+        assert response.status_code == 200
+        warnings = response.json().get("warnings") or []
+        assert any("$.county" in w for w in warnings)

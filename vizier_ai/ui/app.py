@@ -29,6 +29,7 @@ from vizier_ai.core import (
 from vizier_ai.bundle import render_bundle
 from vizier_ai.models.bundle import InsightBundle
 from vizier_ai.models.constraints import InsightConstraints
+from vizier_ai.models.csv_options import CsvOptions
 from vizier_ai.models.insights import ChartSpec
 from vizier_ai.parser import parse_data
 from vizier_ai.ui.models.api import (
@@ -123,6 +124,15 @@ async def unsatisfiable_constraints_handler(request: Request, exc: Unsatisfiable
     return JSONResponse(status_code=422, content={"detail": exc.reason})
 
 
+def _parse_csv_options(csv_options: str) -> CsvOptions | None:
+    if not csv_options.strip():
+        return None
+    try:
+        return CsvOptions.model_validate_json(csv_options)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid CSV options: {exc}")
+
+
 # --- Routes ---
 
 @app.post("/api/generate")
@@ -163,6 +173,7 @@ async def generate_upload(
     file: UploadFile = File(...),
     fileFormat: str = Form(default="csv"),
     constraints: str = Form(default=""),
+    csvOptions: str = Form(default=""),
 ) -> InsightsResponse:
     """Full pipeline with file upload via multipart form data."""
     if MAX_FILE_SIZE and file.size > MAX_FILE_SIZE:
@@ -185,7 +196,7 @@ async def generate_upload(
         tmp_path = Path(tmp.name)
 
     try:
-        real_data = parse_data(tmp_path, fileFormat)
+        real_data = parse_data(tmp_path, fileFormat, csv_options=_parse_csv_options(csvOptions))
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -252,6 +263,7 @@ async def load_bundle(
     bundle: UploadFile = File(...),
     data: UploadFile | None = File(default=None),
     dataFormat: str = Form(default="csv"),
+    csvOptions: str = Form(default=""),
 ) -> InsightsResponse:
     """Render a saved insight bundle, optionally with an attached dataset. No LLM call."""
     bundle_bytes = await bundle.read()
@@ -260,11 +272,13 @@ async def load_bundle(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid bundle: {exc}")
 
+    csv_options = _parse_csv_options(csvOptions)
+
     rows: list[dict] = []
     if data is not None:
         data_text = (await data.read()).decode("utf-8")
         try:
-            parsed_data = parse_data(data_text, dataFormat)
+            parsed_data = parse_data(data_text, dataFormat, csv_options=csv_options)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Invalid data file: {exc}")
         rows = parsed_data.get("rows", [])

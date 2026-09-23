@@ -85,3 +85,38 @@ it('calls onImportBundle with the selected files', async () => {
   expect(onImportBundle.mock.calls[0][0]).toBe(bundleFile)
   expect(onImportBundle.mock.calls[0][1]).toBe(dataFile)
 })
+
+it('shows csv options for the main upload when file mode and csv format are selected', async () => {
+  const onGenerate = vi.fn().mockResolvedValue(undefined)
+  renderWithMantine(<DataInputPanel onGenerate={onGenerate} isGenerating={false} />)
+
+  expect(screen.queryByRole('button', { name: /csv options/i })).not.toBeInTheDocument()
+
+  const sourceSelect = screen.getByLabelText(/real data source/i, { selector: 'input' })
+  fireEvent.click(sourceSelect)
+  fireEvent.click(await screen.findByRole('option', { name: /file upload/i }))
+
+  expect(await screen.findByRole('button', { name: /csv options/i })).toBeInTheDocument()
+})
+
+it('sends csv options with the generate request', async () => {
+  const onGenerate = vi.fn().mockResolvedValue(undefined)
+  renderWithMantine(<DataInputPanel onGenerate={onGenerate} isGenerating={false} />)
+
+  const sourceSelect = screen.getByLabelText(/real data source/i, { selector: 'input' })
+  fireEvent.click(sourceSelect)
+  fireEvent.click(await screen.findByRole('option', { name: /file upload/i }))
+
+  fireEvent.click(await screen.findByRole('button', { name: /csv options/i }))
+  fireEvent.input(screen.getByLabelText(/quote character/i), { target: { value: "'" } })
+
+  fireEvent.input(screen.getByLabelText(/data description/i), {
+    target: { value: 'orders(id int, total decimal)' }
+  })
+  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
+
+  await waitFor(() => expect(onGenerate).toHaveBeenCalledTimes(1))
+  const request = onGenerate.mock.calls[0][0] as GenerateRequest
+  expect(request.dataSource.mode).toBe('file')
+  expect(request.csvOptions).toEqual({ quote_char: "'" })
+})
