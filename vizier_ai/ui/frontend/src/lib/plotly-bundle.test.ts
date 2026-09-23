@@ -1,6 +1,6 @@
 import Plotly from './plotly-bundle'
 
-const requiredTraces = ['scatter', 'bar', 'pie', 'heatmap', 'scattergeo'] as const
+const requiredTraces = ['scatter', 'scattergl', 'bar', 'pie', 'heatmap', 'scattergeo'] as const
 
 const typeErrors = (trace: { type: string }) =>
   (Plotly.validate([trace], {}) ?? []).filter((e) => e.path?.[0] === 'type')

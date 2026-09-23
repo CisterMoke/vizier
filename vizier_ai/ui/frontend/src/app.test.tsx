@@ -14,6 +14,8 @@ vi.mock('./services/apiClient', () => ({
   regenerate: (...args: unknown[]) => regenerateMock(...args),
   loadBundle: (...args: unknown[]) => loadBundleMock(...args),
   editChart: vi.fn(),
+  insightSvgUrl: (sessionId: string, insightId: string) =>
+    `/api/session/${sessionId}/insight/${insightId}/svg`,
   fetchConfig: vi.fn().mockResolvedValue({ maxFileSize: null, maxRows: null }),
 }))
 

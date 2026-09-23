@@ -4,6 +4,7 @@ Resolves JSONPath, applies filters and aggregation, and builds
 Plotly-compatible trace and layout dicts for the frontend to render.
 """
 
+import os
 import re
 from typing import Any
 
@@ -16,6 +17,8 @@ GRID_COLOR = "rgba(148, 163, 184, 0.15)"
 AXIS_COLOR = "#94a3b8"
 PAPER_BG = "rgba(15, 23, 42, 0.4)"
 PLOT_BG = "rgba(15, 23, 42, 0.2)"
+
+DEFAULT_GL_TRACE_THRESHOLD = 1000
 
 TRACE_COLORS = [
     "#22d3ee", "#818cf8", "#f472b6", "#fbbf24",
@@ -234,6 +237,22 @@ def _dark_axes(x_label: str = "", y_label: str = "") -> dict:
     }
 
 
+def _gl_trace_threshold() -> int:
+    """Point count above which scatter/line traces switch to WebGL.
+
+    Purely a rendering choice: the plotted points are identical either way.
+    Configurable via the GL_TRACE_THRESHOLD environment variable.
+    """
+    try:
+        return int(os.getenv("GL_TRACE_THRESHOLD", DEFAULT_GL_TRACE_THRESHOLD))
+    except (TypeError, ValueError):
+        return DEFAULT_GL_TRACE_THRESHOLD
+
+
+def _scatter_type(point_count: int) -> str:
+    return "scattergl" if point_count > _gl_trace_threshold() else "scatter"
+
+
 def build_trace(
         trace_spec: TraceSpec,
         rows: list[dict],
@@ -268,13 +287,13 @@ def build_trace(
         trace.update({"type": "bar", "x": x, "y": y, "marker": {"color": color}})
     elif chart_type == "line":
         trace.update({
-            "type": "scatter", "mode": "lines+markers",
+            "type": _scatter_type(len(x)), "mode": "lines+markers",
             "x": x, "y": y,
             "line": {"color": color}, "marker": {"color": color},
         })
     elif chart_type == "scatter":
         trace.update({
-            "type": "scatter", "mode": "markers",
+            "type": _scatter_type(len(x)), "mode": "markers",
             "x": x, "y": y, "marker": {"color": color, "size": 8},
         })
     elif chart_type == "pie":

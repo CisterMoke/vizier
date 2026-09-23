@@ -7,8 +7,9 @@ export interface InsightMetadata {
 
 export interface ChartSpec {
   traces: TraceSpec[]
-  plotlyData: unknown[]
-  plotlyLayout: Record<string, unknown>
+  plotlyData: unknown[] | null
+  plotlyLayout: Record<string, unknown> | null
+  isStatic?: boolean
 }
 
 export interface TraceSpec {

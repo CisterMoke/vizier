@@ -1,4 +1,4 @@
-import type { InsightCandidate } from '../domain/types'
+import type { InsightCandidate, TraceSpec } from '../domain/types'
 import { parseInsights } from '../domain/schemas'
 import type { BundleContext } from '../domain/bundle'
 import type { InsightConstraintsPayload } from '../domain/constraints'
@@ -162,22 +162,18 @@ export const loadBundle = async (
   return parseResponse(response)
 }
 
-export interface TraceSpec {
-  chartType: string
-  xAxis: string
-  yAxis: string
-  zAxis?: string | null
-  aggregation?: string | null
-  filter?: { field: string; op: string; value: string | number | (string | number)[] } | null
-  yaxis2?: string | null
-  name?: string | null
+export interface EditChartResult {
+  plotlyData: unknown[] | null
+  plotlyLayout: Record<string, unknown> | null
+  isStatic: boolean
+  staticSvg: string | null
 }
 
 export const editChart = async (
   sessionId: string,
   traces: TraceSpec[],
   backendUrl?: string
-): Promise<{ plotlyData: unknown[]; plotlyLayout: Record<string, unknown> }> => {
+): Promise<EditChartResult> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
 
   const response = await fetch(`${baseUrl}/api/edit-chart`, {
@@ -192,3 +188,6 @@ export const editChart = async (
 
   return await response.json()
 }
+
+export const insightSvgUrl = (sessionId: string, insightId: string): string =>
+  `${DEFAULT_BACKEND_URL}/api/session/${sessionId}/insight/${insightId}/svg`

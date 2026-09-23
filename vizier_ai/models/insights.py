@@ -25,6 +25,10 @@ class ChartSpec(BaseModel):
     traces: list[TraceSpec] = Field(min_length=1, description="At least one trace. Multiple traces are overlaid in one chart; each additional trace automatically gets its own secondary y-axis.")
     plotlyData: list[Any] | None = None
     plotlyLayout: dict[str, Any] | None = None
+    isStatic: bool = Field(
+        default=False,
+        description="True when this chart is rendered as a server-side static SVG because its dataset exceeds the interactive-rendering threshold; plotlyData is omitted then.",
+    )
 
 
 class InsightMetadata(BaseModel):

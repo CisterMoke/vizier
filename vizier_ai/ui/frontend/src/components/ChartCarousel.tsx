@@ -1,11 +1,16 @@
-import { Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox } from '@mantine/core'
-import { useState, useCallback } from 'preact/hooks'
-import type { InsightCandidate } from '../domain/types'
+import { Badge, Button, Card, Group, Stack, Text, Title, Select, Modal, Checkbox } from '@mantine/core'
+import { useCallback, useMemo, useState } from 'preact/hooks'
+import type { InsightCandidate, TraceSpec } from '../domain/types'
 import PlotlyComponent from 'react-plotly.js'
-import { editChart, type TraceSpec } from '../services/apiClient'
+import { editChart, insightSvgUrl } from '../services/apiClient'
 
 const Plot =
   (PlotlyComponent as unknown as { default?: typeof PlotlyComponent }).default ?? PlotlyComponent
+
+// Static object identities: react-plotly.js re-plots (Plotly.react) whenever
+// data/layout/config prop identity changes, so these must never be inlined.
+const PLOT_CONFIG = { responsive: true, displaylogo: false }
+const PLOT_STYLE = { width: '100%', height: '400px' }
 
 const CHART_TYPES = [
   { value: 'bar', label: 'Bar' },
@@ -29,6 +34,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
   const [combineSelection, setCombineSelection] = useState<Set<string>>(new Set())
   const [editedPlotlyData, setEditedPlotlyData] = useState<unknown[] | null>(null)
   const [editedPlotlyLayout, setEditedPlotlyLayout] = useState<Record<string, unknown> | null>(null)
+  const [editedStaticSvg, setEditedStaticSvg] = useState<string | null>(null)
   const [isRebuilding, setIsRebuilding] = useState(false)
 
   const next = useCallback(() => {
@@ -51,6 +57,29 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
 
   const activePlotlyData = editedPlotlyData ?? insight.chart_spec.plotlyData
   const activePlotlyLayout = editedPlotlyLayout ?? insight.chart_spec.plotlyLayout
+  const plotLayout = useMemo(
+    () => ({ ...(activePlotlyLayout as Partial<Plotly.Layout>), autosize: true }),
+    [activePlotlyLayout]
+  )
+
+  const showStaticChart = editedStaticSvg !== null
+    || (insight.chart_spec.isStatic === true && editedPlotlyData === null)
+
+  const staticSrc = editedStaticSvg
+    ? `data:image/svg+xml;utf8,${encodeURIComponent(editedStaticSvg)}`
+    : insightSvgUrl(sessionId, insight.id)
+
+  const applyEditResult = (result: { plotlyData: unknown[] | null; plotlyLayout: Record<string, unknown> | null; isStatic?: boolean; staticSvg?: string | null }) => {
+    if (result.isStatic && result.staticSvg) {
+      setEditedStaticSvg(result.staticSvg)
+      setEditedPlotlyData(null)
+      setEditedPlotlyLayout(null)
+    } else {
+      setEditedStaticSvg(null)
+      setEditedPlotlyData(result.plotlyData)
+      setEditedPlotlyLayout(result.plotlyLayout)
+    }
+  }
 
   const handleChartTypeChange = async (newType: string | null) => {
     if (!newType || !sessionId || !insight) return
@@ -61,14 +90,13 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
     try {
       const traces: TraceSpec[] = [
         {
-          chartType: newType,
-          xAxis: '$.x',
-          yAxis: '$.y',
+          chart_type: newType,
+          x_axis: '$.x',
+          y_axis: '$.y',
         }
       ]
       const result = await editChart(sessionId, traces)
-      setEditedPlotlyData(result.plotlyData)
-      setEditedPlotlyLayout(result.plotlyLayout)
+      applyEditResult(result)
     } catch {
       setEditingChartType(null)
     } finally {
@@ -84,15 +112,14 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
       const traces: TraceSpec[] = Array.from(combineSelection).map((id) => {
         const selectedInsight = insights.find((i) => i.id === id)
         return {
-          chartType: 'bar',
-          xAxis: '$.x',
-          yAxis: '$.y',
+          chart_type: 'bar',
+          x_axis: '$.x',
+          y_axis: '$.y',
           name: selectedInsight?.metadata.title ?? id,
         }
       })
       const result = await editChart(sessionId, traces)
-      setEditedPlotlyData(result.plotlyData)
-      setEditedPlotlyLayout(result.plotlyLayout)
+      applyEditResult(result)
       setCombineOpen(false)
     } catch {
     } finally {
@@ -172,25 +199,36 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
             />
           ) : null}
 
-          <Plot
-            data={activePlotlyData as Plotly.Data[]}
-            layout={{
-              ...activePlotlyLayout as Partial<Plotly.Layout>,
-              autosize: true
-            }}
-            config={{ responsive: true, displaylogo: false }}
-            style={{ width: '100%', height: '400px' }}
-            useResizeHandler
-          />
+          {showStaticChart ? (
+            <Stack gap="xs">
+              <img
+                src={staticSrc}
+                alt={`${insight.metadata.title} (static preview)`}
+                style={{ width: '100%', height: 'auto' }}
+              />
+              <Badge variant="light" color="grape" w="fit-content">
+                Static preview — dataset exceeds the interactive-rendering limit
+              </Badge>
+            </Stack>
+          ) : (
+            <Plot
+              data={activePlotlyData as Plotly.Data[]}
+              layout={plotLayout}
+              config={PLOT_CONFIG}
+              style={PLOT_STYLE}
+              useResizeHandler
+            />
+          )}
 
           <Group justify="flex-end">
-            {editedPlotlyData ? (
+            {editedPlotlyData || editedStaticSvg ? (
               <Button
                 variant="subtle"
                 size="sm"
                 onClick={() => {
                   setEditedPlotlyData(null)
                   setEditedPlotlyLayout(null)
+                  setEditedStaticSvg(null)
                   setEditingChartType(null)
                 }}
               >
@@ -214,6 +252,7 @@ export function ChartCarousel({ insights, sessionId, onDelete }: ChartCarouselPr
                 setActiveIndex(index)
                 setEditedPlotlyData(null)
                 setEditedPlotlyLayout(null)
+                setEditedStaticSvg(null)
                 setEditingChartType(null)
               }}
               className="inline-block rounded-full transition-all"

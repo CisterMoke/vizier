@@ -1,4 +1,4 @@
-import { extractErrorMessage, loadBundle } from './apiClient'
+import { extractErrorMessage, insightSvgUrl, loadBundle } from './apiClient'
 import type { CsvOptionsPayload } from '../domain/csv'
 
 describe('extractErrorMessage', () => {
@@ -81,5 +81,9 @@ describe('loadBundle', () => {
 
     const body = fetchMock.mock.calls[0][1].body as FormData
     expect(body.get('csvOptions')).toBe('{"delimiter":";"}')
+  })
+
+  it('builds the static insight svg url', () => {
+    expect(insightSvgUrl('s1', 'i1')).toBe('http://localhost:8000/api/session/s1/insight/i1/svg')
   })
 })

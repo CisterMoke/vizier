@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
@@ -30,7 +30,7 @@ from vizier_ai.bundle import render_bundle
 from vizier_ai.models.bundle import InsightBundle
 from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.csv_options import CsvOptions
-from vizier_ai.models.insights import ChartSpec
+from vizier_ai.models.insights import ChartSpec, Insight, InsightMetadata
 from vizier_ai.parser import parse_data
 from vizier_ai.ui.models.api import (
     GenerateRequest,
@@ -38,8 +38,14 @@ from vizier_ai.ui.models.api import (
     RegenerateRequest,
     InsightsResponse
 )
+from vizier_ai.ui import static_render
 from vizier_ai.ui.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
-from vizier_ai.ui.sessions import _create_session, _get_session, _get_session_rows
+from vizier_ai.ui.sessions import (
+    _create_session,
+    _get_session,
+    _get_session_rows,
+    _set_session_insights,
+)
 
 # Load .env file before reading any env vars
 load_dotenv(Path(__file__).parents[1] / ".env")
@@ -133,6 +139,35 @@ def _parse_csv_options(csv_options: str) -> CsvOptions | None:
         raise HTTPException(status_code=422, detail=f"Invalid CSV options: {exc}")
 
 
+def _recipe_only(insights: list) -> list:
+    """Session copy of insights: trace recipes without materialized arrays."""
+    copies = []
+    for insight in insights:
+        copy = insight.model_copy(deep=True)
+        copy.chart_spec.plotlyData = None
+        copy.chart_spec.plotlyLayout = None
+        copies.append(copy)
+    return copies
+
+
+def _apply_static_mode(insights: list, session: dict | None) -> list:
+    """Mark insights over the rendering threshold as static, dropping their arrays.
+
+    Requires session rows (static SVGs are re-materialized server-side) and
+    an available static renderer; otherwise everything stays interactive.
+    """
+    rows = _get_session_rows(session) if session else []
+    if not rows or not static_render.is_static_rendering_available():
+        return insights
+    for insight in insights:
+        spec = insight.chart_spec
+        if spec.plotlyData and static_render.exceeds_static_threshold(spec.plotlyData):
+            spec.isStatic = True
+            spec.plotlyData = None
+            spec.plotlyLayout = None
+    return insights
+
+
 # --- Routes ---
 
 @app.post("/api/generate")
@@ -155,7 +190,10 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
 
     result = await run_pipeline(request.schema_text, real_data, constraints=request.constraints)
 
-    session_id = _create_session(real_data, request.schema_text)
+    session_id = _create_session(
+        real_data, request.schema_text, insights=_recipe_only(result.insights)
+    )
+    _apply_static_mode(result.insights, _get_session(session_id))
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -202,7 +240,8 @@ async def generate_upload(
 
     result = await run_pipeline(schemaText, real_data, constraints=parsed_constraints)
 
-    session_id = _create_session(real_data, schemaText)
+    session_id = _create_session(real_data, schemaText, insights=_recipe_only(result.insights))
+    _apply_static_mode(result.insights, _get_session(session_id))
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -225,6 +264,8 @@ async def regenerate(request: RegenerateRequest) -> InsightsResponse:
     real_data = session.get("real_data")
 
     result = await run_pipeline(schema_text, real_data, constraints=request.constraints)
+    _set_session_insights(request.session_id, _recipe_only(result.insights))
+    _apply_static_mode(result.insights, session)
     response = InsightsResponse.model_validate(
         dict(
             **result.model_dump(),
@@ -249,13 +290,58 @@ async def edit_chart(request: EditChartRequest) -> dict:
         rows = generate_mock_rows(None, seed=1337)
 
     chart_spec = ChartSpec(traces=request.traces)
-    insight = {"title": "Custom chart", "chartSpec": chart_spec}
+    insight = Insight(
+        id="custom-chart",
+        metadata=InsightMetadata(title="Custom chart", summary="Custom chart", keyIdea="Custom chart"),
+        chart_spec=chart_spec,
+    )
     plotly_spec = build_plotly_spec(insight, rows)
+
+    over_threshold = (
+        static_render.is_static_rendering_available()
+        and static_render.exceeds_static_threshold(plotly_spec["data"])
+    )
+    if over_threshold:
+        try:
+            svg = static_render.render_static_svg(plotly_spec)
+        except static_render.StaticRenderUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        return {"plotlyData": None, "plotlyLayout": None, "isStatic": True, "staticSvg": svg}
 
     return {
         "plotlyData": plotly_spec["data"],
         "plotlyLayout": plotly_spec["layout"],
+        "isStatic": False,
+        "staticSvg": None,
     }
+
+
+@app.get("/api/session/{session_id}/insight/{insight_id}/svg")
+async def insight_svg(session_id: str, insight_id: str) -> Response:
+    """Render a stored insight as a static SVG (server-side, via kaleido)."""
+    session = _get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired.")
+
+    rows = _get_session_rows(session)
+    if not rows:
+        raise HTTPException(
+            status_code=404, detail="This session has no data rows to render."
+        )
+
+    insight = next(
+        (i for i in session.get("insights", []) if i.id == insight_id), None
+    )
+    if insight is None:
+        raise HTTPException(status_code=404, detail="Insight not found.")
+
+    plotly_spec = build_plotly_spec(insight, rows)
+    try:
+        svg = static_render.render_static_svg(plotly_spec)
+    except static_render.StaticRenderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return Response(content=svg, media_type="image/svg+xml")
 
 
 @app.post("/api/load-bundle")
@@ -286,7 +372,12 @@ async def load_bundle(
     result, warnings = render_bundle(parsed_bundle, rows=rows)
 
     real_data = {"rows": rows, "rowCount": len(rows)} if rows else None
-    session_id = _create_session(real_data, parsed_bundle.dataset_schema.model_dump_json())
+    session_id = _create_session(
+        real_data,
+        parsed_bundle.dataset_schema.model_dump_json(),
+        insights=_recipe_only(result.insights),
+    )
+    _apply_static_mode(result.insights, _get_session(session_id))
 
     response = InsightsResponse.model_validate(
         dict(

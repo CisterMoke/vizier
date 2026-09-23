@@ -13,7 +13,7 @@ from vizier_ai.models.bundle import InsightBundle, SavedInsight
 from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.data_profile import DataColumnSpec, DataProfile
 from vizier_ai.models.data_schema import DatasetField, DatasetSchema
-from vizier_ai.models.insights import Insights, InsightMetadata, TraceSpec
+from vizier_ai.models.insights import ChartSpec, Insights, Insight, InsightMetadata, TraceSpec
 from vizier_ai.ui.models.api import GenerateRequest, RegenerateRequest
 
 
@@ -321,3 +321,184 @@ class TestCsvOptionsEndpoints:
         assert response.status_code == 200
         warnings = response.json().get("warnings") or []
         assert any("$.county" in w for w in warnings)
+
+
+def make_large_insights_result(point_count: int = 10) -> Insights:
+    points = list(range(point_count))
+    insight = Insight(
+        id="ins-1",
+        metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+        chart_spec=ChartSpec(
+            traces=[TraceSpec(chart_type="bar", x_axis="$.x", y_axis="$.y")],
+            plotlyData=[{"type": "bar", "x": points, "y": points}],
+            plotlyLayout={"title": {"text": "T"}},
+        ),
+    )
+    return Insights(insights=[insight])
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestStaticCharts:
+    """Charts above a renderer threshold are served as server-rendered SVGs."""
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from vizier_ai.ui import static_render
+        from vizier_ai.ui.app import app
+
+        monkeypatch.setattr(static_render, "_KALEIDO_IMPORT_ERROR", None)
+        monkeypatch.setattr(
+            static_render, "render_static_svg", lambda spec: "<svg>stub</svg>"
+        )
+        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "5")
+
+        return TestClient(app)
+
+    def upload_csv(self, client, monkeypatch, result):
+        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
+            return result
+
+        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+
+        return client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
+            data={"schemaText": "numbers", "fileFormat": "csv"},
+        )
+
+    def test_generate_marks_oversized_insight_static(self, client, monkeypatch):
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["sessionId"]
+        chart_spec = body["insights"][0]["chart_spec"]
+        assert chart_spec["isStatic"] is True
+        assert chart_spec["plotlyData"] is None
+        assert chart_spec["plotlyLayout"] is None
+
+    def test_session_stores_recipe_only_insights(self, client, monkeypatch):
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+        session_id = response.json()["sessionId"]
+
+        from vizier_ai.ui.sessions import _get_session
+
+        stored = _get_session(session_id)["insights"]
+        assert stored[0].chart_spec.plotlyData is None
+        assert stored[0].chart_spec.traces[0].x_axis == "$.x"
+
+    def test_svg_endpoint_renders_insight(self, client, monkeypatch):
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+        body = response.json()
+
+        svg = client.get(
+            f"/api/session/{body['sessionId']}/insight/ins-1/svg"
+        )
+
+        assert svg.status_code == 200
+        assert svg.headers["content-type"] == "image/svg+xml"
+        assert svg.text == "<svg>stub</svg>"
+
+    def test_svg_endpoint_unknown_session(self, client):
+        response = client.get("/api/session/missing/insight/ins-1/svg")
+        assert response.status_code == 404
+
+    def test_svg_endpoint_unknown_insight(self, client, monkeypatch):
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+        session_id = response.json()["sessionId"]
+
+        assert client.get(
+            f"/api/session/{session_id}/insight/nope/svg"
+        ).status_code == 404
+
+    def test_svg_endpoint_requires_session_rows(self, client, monkeypatch):
+        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
+            return make_large_insights_result()
+
+        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        response = client.post("/api/generate", json={"schemaText": "numbers"})
+        session_id = response.json()["sessionId"]
+
+        assert client.get(
+            f"/api/session/{session_id}/insight/ins-1/svg"
+        ).status_code == 404
+
+    def test_mock_sessions_never_become_static(self, client, monkeypatch):
+        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
+            return make_large_insights_result()
+
+        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        response = client.post("/api/generate", json={"schemaText": "numbers"})
+
+        chart_spec = response.json()["insights"][0]["chart_spec"]
+        assert chart_spec["isStatic"] is False
+        assert chart_spec["plotlyData"] is not None
+
+    def test_static_falls_back_to_interactive_without_kaleido(self, client, monkeypatch):
+        from vizier_ai.ui import static_render
+
+        monkeypatch.setattr(
+            static_render, "_KALEIDO_IMPORT_ERROR", ImportError("no kaleido")
+        )
+
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+
+        chart_spec = response.json()["insights"][0]["chart_spec"]
+        assert chart_spec["isStatic"] is False
+        assert chart_spec["plotlyData"] is not None
+
+    def test_edit_chart_returns_static_svg_over_threshold(self, client, monkeypatch):
+        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "1")
+        response = self.upload_csv(client, monkeypatch, Insights(insights=[]))
+        session_id = response.json()["sessionId"]
+
+        edited = client.post("/api/edit-chart", json={
+            "sessionId": session_id,
+            "traces": [{
+                "chart_type": "line",
+                "x_axis": "$.x",
+                "y_axis": "$.y",
+            }],
+        })
+
+        assert edited.status_code == 200
+        body = edited.json()
+        assert body["isStatic"] is True
+        assert body["staticSvg"] == "<svg>stub</svg>"
+        assert body["plotlyData"] is None
+
+    def test_edit_chart_returns_interactive_below_threshold(self, client, monkeypatch):
+        monkeypatch.setenv("STATIC_SVG_THRESHOLD", "100")
+        response = self.upload_csv(client, monkeypatch, Insights(insights=[]))
+        session_id = response.json()["sessionId"]
+
+        edited = client.post("/api/edit-chart", json={
+            "sessionId": session_id,
+            "traces": [{
+                "chart_type": "line",
+                "x_axis": "$.x",
+                "y_axis": "$.y",
+            }],
+        })
+
+        body = edited.json()
+        assert body["isStatic"] is False
+        assert body["staticSvg"] is None
+        assert body["plotlyData"] is not None
+
+    def test_regenerate_updates_stored_insights(self, client, monkeypatch):
+        response = self.upload_csv(client, monkeypatch, make_large_insights_result())
+        session_id = response.json()["sessionId"]
+
+        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
+            return make_large_insights_result(point_count=3)
+
+        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        client.post("/api/regenerate", json={"sessionId": session_id})
+
+        from vizier_ai.ui.sessions import _get_session
+
+        stored = _get_session(session_id)["insights"]
+        assert stored[0].chart_spec.plotlyData is None

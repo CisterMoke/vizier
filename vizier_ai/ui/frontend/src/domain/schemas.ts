@@ -16,8 +16,9 @@ export const traceSpecSchema = z.object({
 
 export const chartSpecSchema = z.object({
   traces: z.array(traceSpecSchema).default([]),
-  plotlyData: z.array(z.unknown()).default([]),
-  plotlyLayout: z.record(z.string(), z.unknown()).default({}),
+  plotlyData: z.array(z.unknown()).nullable().default([]),
+  plotlyLayout: z.record(z.string(), z.unknown()).nullable().default({}),
+  isStatic: z.boolean().default(false),
 })
 
 export const insightMetadataSchema = z.object({

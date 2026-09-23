@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from vizier_ai.chart_builder import _resolve_values, build_plotly_spec
+from vizier_ai.chart_builder import _resolve_values, build_plotly_spec, build_trace
 from vizier_ai.models.insights import (
     ChartSpec,
     Insight,
@@ -147,3 +147,59 @@ class TestBuildPlotlySpecWithSpecialChars:
         # Only active rows: King=100, Pierce=200
         assert trace["x"] == ["King", "Pierce"]
         assert trace["y"] == [100.0, 200.0]
+
+
+class TestScatterGlSwitch:
+    """WebGL traces (scattergl) are a rendering choice only: the plotted
+    points are identical to their SVG (scatter) counterparts."""
+
+    @staticmethod
+    def make_rows(count: int) -> list[dict]:
+        return [{"x": i, "y": i * 2} for i in range(count)]
+
+    def test_line_below_threshold_stays_svg(self):
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(10),
+            color_index=0,
+            y_index=1,
+        )
+        assert trace["type"] == "scatter"
+
+    def test_line_above_threshold_uses_webgl(self):
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(1500),
+            color_index=0,
+            y_index=1,
+        )
+        assert trace["type"] == "scattergl"
+        assert len(trace["x"]) == 1500
+
+    def test_scatter_above_threshold_uses_webgl(self):
+        trace = build_trace(
+            TraceSpec(chart_type="scatter", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(1500),
+            color_index=0,
+            y_index=1,
+        )
+        assert trace["type"] == "scattergl"
+
+    def test_bar_is_never_converted(self):
+        trace = build_trace(
+            TraceSpec(chart_type="bar", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(1500),
+            color_index=0,
+            y_index=1,
+        )
+        assert trace["type"] == "bar"
+
+    def test_threshold_is_configurable_via_env(self, monkeypatch):
+        monkeypatch.setenv("GL_TRACE_THRESHOLD", "5")
+        trace = build_trace(
+            TraceSpec(chart_type="line", x_axis="$.x", y_axis="$.y"),
+            self.make_rows(10),
+            color_index=0,
+            y_index=1,
+        )
+        assert trace["type"] == "scattergl"
