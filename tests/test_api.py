@@ -329,6 +329,16 @@ class TestCsvOptionsEndpoints:
         assert response.status_code == 422
         assert "Invalid CSV options" in response.json()["detail"]
 
+    def test_generate_upload_rejects_malformed_data(self, client, captured):
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.json", b'{"broken": json', "application/json")},
+            data={"schemaText": "counties", "fileFormat": "json"},
+        )
+
+        assert response.status_code == 400
+        assert "detail" in response.json()
+
     def test_load_bundle_applies_csv_options(self, client):
         csv_content = "county;count\nKing;5\nPierce;10"
 

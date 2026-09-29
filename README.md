@@ -30,7 +30,7 @@ Vizier AI takes a free-form description of your dataset (prose, schema, sample r
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Preact, Vite, TypeScript, Mantine, Tailwind CSS v4, Plotly.js, Zod, jsonpath-plus |
+| Frontend | React 19, Vite, TypeScript, Mantine, Tailwind CSS v4, Plotly.js, Zod |
 | Backend | Python, FastAPI, pydantic-ai, pandas, aiohttp, SQLAlchemy |
 | LLM | Server-side via pydantic-ai (default: Google Gemini; Mistral also supported) |
 | Deployment | systemd + nginx on Ubuntu |
@@ -171,7 +171,7 @@ vizier-ai/
 │       ├── app.py           # FastAPI server (routes, sessions, rate limiting)
 │       ├── main.py          # Uvicorn entry point
 │       ├── ratelimit.py     # Per-IP + global rate limiting
-│       └── frontend/        # Preact SPA (Vite, Mantine, Tailwind, Plotly)
+│       └── frontend/        # React SPA (Vite, Mantine, Tailwind, Plotly)
 │           ├── src/
 │           │   ├── app.tsx          # Main app flow
 │           │   ├── components/      # DataInputPanel, ChartCarousel

@@ -16,7 +16,7 @@ from vizier_ai.models.csv_options import CsvOptions
 
 def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
     """Convert a pandas DataFrame to the standard RawDataResult dict."""
-    records = json.loads(df.to_json(orient="records", force_ascii=False))
+    records = json.loads(df.to_json(orient="records", force_ascii=False, date_format="iso"))
     columns = [str(c) for c in df.columns]
     return {"format": fmt, "columns": columns, "rows": records, "rowCount": len(records)}
 
@@ -88,25 +88,47 @@ def parse_jsonl(source: str | Path, max_rows: int = None) -> dict[str, Any]:
     return _df_to_result(df, "jsonl")
 
 
-def parse_data(source: str | Path, format_hint: str = "csv", max_rows: int = None, csv_options: CsvOptions | None = None) -> dict[str, Any]:
-    """Parse raw data from a file path or text using the specified format.
+def _normalize_source(source: str | Path) -> str | Path:
+    """A plain string is raw data text — unless it names an existing file,
+    in which case the file is read instead. This makes both
+    ``parse_data("data.csv", "csv")`` and ``parse_data(Path("data.csv"), "csv")``
+    work; raw text that does not point at a file is parsed as-is."""
+    if isinstance(source, str) and Path(source).is_file():
+        return Path(source)
+    return source
+
+
+def parse_data(source: str | Path | pd.DataFrame, format_hint: str = "csv", max_rows: int = None, csv_options: CsvOptions | None = None) -> dict[str, Any]:
+    """Parse raw data from a file path, text, or a pandas DataFrame.
 
     Args:
-        source: File path (Path) or raw text (str).
-        format_hint: "csv", "json", or "jsonl".
+        source: A pandas DataFrame, a file path (str naming an existing
+            file, or Path), or raw text (str). A str that names an
+            existing file is read from disk; any other str is parsed as
+            raw data text.
+        format_hint: "csv", "json", or "jsonl". Ignored for DataFrames.
         max_rows: Maximum number of rows to parse (safety limit).
         csv_options: Optional CSV parsing options (delimiter, quote char,
             header, skip rows, encoding). Only applied to CSV.
+
+    Raises:
+        ValueError: Unknown format_hint, or the data could not be parsed
+            (e.g. malformed JSON or an empty CSV). Never returns a silent
+            empty result: a failed parse would otherwise trigger the
+            mock-data fallback downstream and mislead the caller.
+        FileNotFoundError: ``source`` is a path that does not exist.
     """
-    try:
-        if format_hint == "csv":
-            return parse_csv(source, max_rows, csv_options=csv_options)
-        elif format_hint == "json":
-            return parse_json(source, max_rows)
-        elif format_hint == "jsonl":
-            return parse_jsonl(source, max_rows)
-        else:
-            return {"format": "unknown", "columns": [], "rows": [], "rowCount": 0}
-    except Exception as e:
-        print(f"[parser] Error parsing data: {e}")
-        return {"format": "unknown", "columns": [], "rows": [], "rowCount": 0}
+    if isinstance(source, pd.DataFrame):
+        if max_rows is not None:
+            source = source.head(max_rows)
+        return _df_to_result(source, "csv")
+
+    source = _normalize_source(source)
+    if format_hint == "csv":
+        return parse_csv(source, max_rows, csv_options=csv_options)
+    elif format_hint == "json":
+        return parse_json(source, max_rows)
+    elif format_hint == "jsonl":
+        return parse_jsonl(source, max_rows)
+    else:
+        raise ValueError(f"Unknown format_hint {format_hint!r}: expected 'csv', 'json', or 'jsonl'.")

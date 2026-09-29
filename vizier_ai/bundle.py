@@ -1,9 +1,27 @@
 """Save and load insight bundles — chart recipes without data points."""
 
+from pathlib import Path
+
+import pandas as pd
+
 from vizier_ai.chart_builder import _resolve_values, build_plotly_spec
 from vizier_ai.mock_data import generate_mock_rows
 from vizier_ai.models.bundle import InsightBundle, SavedInsight
 from vizier_ai.models.insights import ChartSpec, Insight, Insights
+from vizier_ai.parser import parse_data
+
+
+def save_bundle(insights_or_bundle, path) -> Path:
+    """Save insights (or an existing bundle) to a JSON file. Returns the path."""
+    bundle = insights_or_bundle if isinstance(insights_or_bundle, InsightBundle) else build_bundle(insights_or_bundle)
+    path = Path(path)
+    path.write_text(bundle.model_dump_json())
+    return path
+
+
+def load_bundle(path) -> InsightBundle:
+    """Load a bundle previously saved with ``save_bundle``."""
+    return InsightBundle.model_validate_json(Path(path).read_text())
 
 
 def build_bundle(insights: Insights) -> InsightBundle:
@@ -48,7 +66,31 @@ def _compat_warnings(bundle: InsightBundle, rows: list[dict]) -> list[str]:
     return warnings
 
 
-def render_bundle(bundle: InsightBundle, rows: list[dict] | None = None) -> tuple[Insights, list[str]]:
+def _rows_from_source(source, csv_options=None) -> list[dict]:
+    """Derive rows from a file path (format inferred from the extension,
+    CSV options applied) or a pandas DataFrame."""
+    if isinstance(source, pd.DataFrame):
+        return parse_data(source)["rows"]
+    fmt = "jsonl" if str(source).endswith(".jsonl") else ("json" if str(source).endswith(".json") else "csv")
+    return parse_data(source, fmt, csv_options=csv_options)["rows"]
+
+
+def render_bundle(
+        bundle: InsightBundle,
+        rows: list[dict] | None = None,
+        *,
+        source: str | Path | pd.DataFrame | None = None,
+    ) -> tuple[Insights, list[str]]:
+    """Render a bundle's insights into charts.
+
+    Rows come from ``rows`` directly, or from ``source`` — a CSV/JSON/JSONL
+    file path or a pandas DataFrame. When ``source`` is a CSV file, the
+    bundle's saved ``csv_options`` are applied automatically. With neither,
+    mock rows are regenerated from the bundle's data profile.
+    """
+    if source is not None and rows is None:
+        rows = _rows_from_source(source, csv_options=bundle.csv_options)
+
     real_rows = rows or []
     has_real_rows = len(real_rows) > 0
 

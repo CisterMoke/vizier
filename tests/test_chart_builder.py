@@ -2,11 +2,13 @@
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
+import vizier_ai.chart_builder as chart_builder_module
 from vizier_ai.chart_builder import _resolve_values, build_plotly_spec, build_trace
 from vizier_ai.models.insights import (
     ChartSpec,
@@ -77,9 +79,10 @@ class TestResolveValuesEscaping:
         assert _resolve_values(rows, "$.parent.child") == [42]
 
     def test_nested_path_with_special_child(self):
-        """Nested path where child key has a dot should resolve correctly."""
+        """Nested access with a dotted child key works via the bracket
+        notation the LLM always emits (see also the two tests above)."""
         rows = [{"parent": {"child.name": 42}}]
-        assert _resolve_values(rows, "$.parent.child.name") == [42]
+        assert _resolve_values(rows, "$['parent']['child.name']") == [42]
 
     def test_missing_field_returns_none(self):
         rows = [{"county": "King"}]
@@ -100,6 +103,19 @@ class TestResolveValuesEscaping:
     def test_field_with_dot_no_dollar_prefix(self):
         rows = [{"revenue.usd": 100}]
         assert _resolve_values(rows, "revenue.usd") == [100]
+
+    def test_bracket_notation_nested_dotted_child(self):
+        """The LLM always emits bracket notation, which resolves dotted
+        child keys unambiguously on the first (primary) attempt."""
+        rows = [{"parent": {"child.name": 42}}]
+        assert _resolve_values(rows, "$['parent']['child.name']") == [42]
+
+    def test_dot_notation_dotted_child_is_not_unescaped(self):
+        """Dot-notation paths with a dotted child key are ambiguous; the
+        resolver only falls back to a whole-path literal-key escape, so
+        genuinely nested dotted children require bracket notation."""
+        rows = [{"parent": {"child.name": 42}}]
+        assert _resolve_values(rows, "$.parent.child.name") == [None]
 
 
 class TestBuildPlotlySpecWithSpecialChars:
@@ -149,6 +165,93 @@ class TestBuildPlotlySpecWithSpecialChars:
         # Only active rows: King=100, Pierce=200
         assert trace["x"] == ["King", "Pierce"]
         assert trace["y"] == [100.0, 200.0]
+
+
+class TestColumnarResolution:
+    """build_plotly_spec pre-resolves each unique field path once over all
+    rows; traces and filters index into the shared columns instead of
+    re-resolving the same path per trace or per filter pass."""
+
+    @staticmethod
+    def counting_compile(monkeypatch):
+        """Spy on jsonpath_compile, counting parse() calls per expression."""
+        parse_counts: dict[str, int] = {}
+        real_compile = chart_builder_module.jsonpath_compile
+
+        def spy(expr):
+            compiled = real_compile(expr)
+
+            def counting_parse(row):
+                parse_counts[expr] = parse_counts.get(expr, 0) + 1
+                return compiled.parse(row)
+
+            return SimpleNamespace(parse=counting_parse)
+
+        monkeypatch.setattr(chart_builder_module, "jsonpath_compile", spy)
+        return parse_counts
+
+    def test_shared_fields_resolved_once_across_traces(self, monkeypatch):
+        parse_counts = self.counting_compile(monkeypatch)
+        rows = [
+            {"county": f"c{i}", "revenue": i, "units": i * 2, "status": "on" if i % 2 else "off"}
+            for i in range(6)
+        ]
+        insight = make_insight("Shared fields", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$.revenue",
+                filter=TraceFilter(field="$.county", op="ne", value="c0"),
+            ),
+            TraceSpec(chart_type="line", x_axis="$.county", y_axis="$.units"),
+        ])
+
+        build_plotly_spec(insight, rows)
+
+        # $.county is referenced by both traces' x_axis AND the filter;
+        # $.revenue and $.units once each. Columnar resolution parses each
+        # unique path exactly once per row (6), not once per use.
+        assert parse_counts["$.county"] == 6
+        assert parse_counts["$.revenue"] == 6
+        assert parse_counts["$.units"] == 6
+
+    def test_filter_and_axes_use_shared_columns(self, monkeypatch):
+        """Filtered trace values must match filtering rows directly."""
+        rows = [
+            {"county": f"c{i}", "revenue": i, "status": "on" if i % 2 else "off"}
+            for i in range(6)
+        ]
+        insight = make_insight("Filtered", [
+            TraceSpec(
+                chart_type="bar",
+                x_axis="$.county",
+                y_axis="$.revenue",
+                filter=TraceFilter(field="$.status", op="eq", value="on"),
+            ),
+            TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.revenue"),
+        ])
+
+        spec = build_plotly_spec(insight, rows)
+        assert spec["data"][0]["x"] == ["c1", "c3", "c5"]
+        assert spec["data"][0]["y"] == [1, 3, 5]
+        assert spec["data"][1]["x"] == ["c0", "c1", "c2", "c3", "c4", "c5"]
+        assert spec["data"][1]["y"] == [0, 1, 2, 3, 4, 5]
+
+    def test_multi_trace_shared_axis_values(self):
+        insight = make_insight("Shared axis", [
+            TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.revenue", name="Revenue"),
+            TraceSpec(chart_type="line", x_axis="$.county", y_axis="$.units", name="Units"),
+        ])
+        rows = [
+            {"county": "King", "revenue": 10, "units": 5},
+            {"county": "Pierce", "revenue": 20, "units": 7},
+        ]
+
+        spec = build_plotly_spec(insight, rows)
+        assert spec["data"][0]["x"] == ["King", "Pierce"]
+        assert spec["data"][0]["y"] == [10, 20]
+        assert spec["data"][1]["x"] == ["King", "Pierce"]
+        assert spec["data"][1]["y"] == [5, 7]
 
 
 class TestScatterGlSwitch:

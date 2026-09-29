@@ -125,3 +125,91 @@ class TestParseCsvOptions:
 
         assert result["columns"] == ["county"]
         assert result["rows"][0]["county"] == "King"
+
+
+class TestParseDataSourceHandling:
+    """A plain string is raw data text — unless it names an existing file,
+    in which case the file is read. Parse failures raise instead of
+    silently returning an empty result (which would trigger the mock-data
+    fallback downstream)."""
+
+    def test_string_path_to_existing_csv_file_is_read(self, tmp_path):
+        path = tmp_path / "sales.csv"
+        path.write_text("county,total\nKing,100\n")
+
+        result = parse_data(str(path), "csv")
+
+        assert result["columns"] == ["county", "total"]
+        assert result["rowCount"] == 1
+
+    def test_raw_csv_text_still_parses(self):
+        result = parse_data("county,total\nKing,100\n", "csv")
+
+        assert result["rowCount"] == 1
+
+    def test_string_path_to_existing_jsonl_file_is_read(self, tmp_path):
+        path = tmp_path / "data.jsonl"
+        path.write_text('{"county": "King"}\n{"county": "Pierce"}\n')
+
+        result = parse_data(str(path), "jsonl")
+
+        assert result["rowCount"] == 2
+
+    def test_string_path_with_csv_options(self, tmp_path):
+        path = tmp_path / "data.csv"
+        path.write_text("département;total\nRhône;100", encoding="latin-1")
+
+        result = parse_data(str(path), "csv", csv_options=CsvOptions(delimiter=";", encoding="latin-1"))
+
+        assert result["columns"] == ["département", "total"]
+        assert result["rows"][0]["département"] == "Rhône"
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            parse_data(tmp_path / "nope.csv", "csv")
+
+    def test_malformed_json_raises(self):
+        with pytest.raises(ValueError):
+            parse_data('{"broken": json', "json")
+
+    def test_malformed_csv_raises(self):
+        with pytest.raises(ValueError):
+            parse_csv("")
+
+    def test_unknown_format_hint_raises(self):
+        with pytest.raises(ValueError, match="format_hint"):
+            parse_data("county,total\nKing,100", "parquet")
+
+
+class TestParseDataDataFrame:
+    """DataFrames are a first-class input — no hand-built dict contract."""
+
+    def test_dataframe_parses_to_records(self):
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "county": ["King", "Pierce"],
+            "total": [100, 200],
+        })
+
+        result = parse_data(df)
+
+        assert result["columns"] == ["county", "total"]
+        assert result["rowCount"] == 2
+        assert result["rows"][0] == {"county": "King", "total": 100}
+
+    def test_dataframe_values_are_json_safe(self):
+        """Datetime and nullable columns must survive as plain JSON types,
+        not pandas/Timestamp objects."""
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "ts": pd.to_datetime(["2024-01-01", "2024-02-01"]),
+            "total": [100, 200],
+        })
+
+        result = parse_data(df)
+        row = result["rows"][0]
+
+        assert isinstance(row["ts"], str)
+        assert isinstance(row["total"], int)

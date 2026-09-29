@@ -68,12 +68,14 @@ class ConstrainedInsightCandidates(BaseModel):
 
 
 class Insight(BaseModel):
-    id: str = Field(...)
+    id: str
     metadata: InsightMetadata
-    chart_spec: ChartSpec = Field(...)
-    mock_seed: int | None = Field(
-        default=None,
-        description="Seed used by the mock data generator for this insight. Only set when no real data was provided.",
+    chart_spec: ChartSpec
+    mock_seed: int | None = (
+        Field(
+            default=None,
+            description="Seed used by the mock data generator for this insight. Only set when no real data was provided.",
+        )
     )
 
     @classmethod
@@ -87,6 +89,36 @@ class Insight(BaseModel):
         )
         return insight
 
+    def figure(self):
+        """Render this insight as an interactive plotly Figure.
+
+        Requires plotly: ``pip install plotly`` (or ``pip install vizier-ai[plot]``).
+        """
+        go = _import_plotly()
+        return go.Figure(
+            data=self.chart_spec.plotlyData or [],
+            layout=self.chart_spec.plotlyLayout or {},
+        )
+
+    def write_html(self, path, **kwargs):
+        """Write this insight's chart to an HTML file. Returns the path."""
+        self.figure().write_html(path, **kwargs)
+        return path
+
+    def show(self, **kwargs):
+        """Show this insight's chart.
+
+        Context-aware, like plotly's own ``Figure.show()``: renders inline
+        in a Jupyter notebook, and opens the system browser with the
+        interactive chart when called from a script or the command line.
+        """
+        self.figure().show(**kwargs)
+
+    def _safe_filename(self) -> str:
+        import re
+
+        return re.sub(r"[^\w.-]", "_", self.id) or "insight"
+
 
 class Insights(BaseModel):
     insights: list[Insight]
@@ -98,3 +130,26 @@ class Insights(BaseModel):
         default=None,
         description="Mock-data recipe, present only when the insights were generated without real data.",
     )
+
+    def save_html(self, directory=".", **kwargs):
+        """Write every insight's chart to ``directory/<insight id>.html``.
+
+        Returns the list of written paths.
+        """
+        from pathlib import Path
+
+        out = Path(directory)
+        out.mkdir(parents=True, exist_ok=True)
+        return [insight.write_html(out / f"{insight._safe_filename()}.html", **kwargs) for insight in self.insights]
+
+
+def _import_plotly():
+    """Import plotly lazily with an actionable error when missing."""
+    try:
+        import plotly.graph_objects as go
+    except ImportError as exc:
+        raise ImportError(
+            "plotly is required to render charts. Install it with "
+            "`pip install plotly` (or `pip install vizier-ai[plot]`)."
+        ) from exc
+    return go

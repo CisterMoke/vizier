@@ -157,17 +157,21 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
     real_data: dict | None = None
 
     if request.data_source_mode == "rest" and request.rest_url:
-        raw_text = await fetch_rest_data(
-            request.rest_method or "GET",
-            request.rest_url,
-            request.rest_headers or "",
-            request.rest_body or "",
-        )
-        real_data = parse_data(raw_text, "json")
+        try:
+            real_data = await fetch_rest_data(
+                request.rest_method or "GET",
+                request.rest_url,
+                request.rest_headers or "",
+                request.rest_body or "",
+            )
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=f"REST response could not be parsed: {exc}")
 
     elif request.data_source_mode == "sql" and request.sql_connection and request.sql_query:
-        raw_json = await fetch_sql_data(request.sql_connection, request.sql_query)
-        real_data = parse_data(raw_json, "json")
+        try:
+            real_data = await fetch_sql_data(request.sql_connection, request.sql_query)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=f"SQL result could not be parsed: {exc}")
 
     result = await run_pipeline(request.schema_text, real_data, constraints=request.constraints)
 
@@ -217,6 +221,8 @@ async def generate_upload(
 
     try:
         real_data = parse_data(tmp_path, fileFormat, csv_options=csv_options)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"Uploaded file could not be parsed: {exc}")
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -333,7 +339,7 @@ async def load_bundle(
         data_text = (await data.read()).decode("utf-8")
         try:
             parsed_data = parse_data(data_text, dataFormat, csv_options=csv_options)
-        except Exception as exc:
+        except (ValueError, OSError) as exc:
             raise HTTPException(status_code=422, detail=f"Invalid data file: {exc}")
         rows = parsed_data.get("rows", [])
 

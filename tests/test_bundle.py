@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from vizier_ai.models.bundle import InsightBundle, SavedInsight
 from vizier_ai.models.data_profile import DataColumnSpec, DataProfile
 from vizier_ai.models.data_schema import DatasetField, DatasetSchema
-from vizier_ai.models.insights import InsightMetadata, Insights, TraceSpec
+from vizier_ai.models.insights import ChartSpec, InsightMetadata, Insights, TraceSpec
+from vizier_ai.bundle import render_bundle
 
 
 def make_schema() -> DatasetSchema:
@@ -250,3 +251,75 @@ class TestBuildAndRenderBundle:
         trace = rendered.insights[0].chart_spec.plotlyData[0]
         assert trace["x"] == []
         assert trace["y"] == []
+
+
+class TestBundleHelpers:
+    """save_bundle / load_bundle path helpers and render_bundle(source=...)."""
+
+    def make_insights(self) -> Insights:
+        from vizier_ai.models.insights import Insight
+
+        return Insights(
+            insights=[Insight(
+                id="i1",
+                metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+                chart_spec=ChartSpec(
+                    traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
+                    plotlyData=[{"type": "bar", "x": ["King"], "y": [1]}],
+                    plotlyLayout={},
+                ),
+            )],
+            dataset_schema=make_schema(),
+            data_profile=make_profile(),
+        )
+
+    def test_save_and_load_bundle_round_trip(self, tmp_path):
+        from vizier_ai import load_bundle, save_bundle
+
+        path = tmp_path / "insights.json"
+        returned = save_bundle(self.make_insights(), path)
+
+        assert Path(returned) == path
+        assert path.exists()
+
+        bundle = load_bundle(path)
+        assert bundle.version == 1
+        assert bundle.insights[0].id == "i1"
+
+    def test_render_bundle_from_csv_source_applies_saved_csv_options(self, tmp_path):
+        from vizier_ai.models.csv_options import CsvOptions
+        from vizier_ai import load_bundle, save_bundle
+
+        csv_path = tmp_path / "data.csv"
+        csv_path.write_text("county;count\nKing;5\nPierce;10")
+
+        bundle = InsightBundle(
+            dataset_schema=make_schema(),
+            data_profile=None,
+            insights=[make_saved_insight(mock_seed=None)],
+            csv_options=CsvOptions(delimiter=";"),
+        )
+        save_bundle(bundle, tmp_path / "b.json")
+        bundle = load_bundle(tmp_path / "b.json")
+
+        result, warnings = render_bundle(bundle, source=csv_path)
+
+        assert warnings == []
+        trace = result.insights[0].chart_spec.plotlyData[0]
+        assert trace["x"] == ["King", "Pierce"]
+
+    def test_render_bundle_from_dataframe_source(self):
+        import pandas as pd
+
+        bundle = InsightBundle(
+            dataset_schema=make_schema(),
+            data_profile=None,
+            insights=[make_saved_insight(mock_seed=None)],
+        )
+        df = pd.DataFrame({"county": ["King", "Pierce", "King"]})
+
+        result, warnings = render_bundle(bundle, source=df)
+
+        assert warnings == []
+        trace = result.insights[0].chart_spec.plotlyData[0]
+        assert trace["x"] == ["King", "Pierce", "King"]

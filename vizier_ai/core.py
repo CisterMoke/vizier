@@ -18,12 +18,14 @@ import pandas as pd
 from typing import TypeVar
 
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UserError
 from pydantic_ai.models import infer_model
 from pydantic_ai.providers import infer_provider_class
 
 from vizier_ai.chart_builder import build_plotly_spec
 from vizier_ai.constraints import apply_constraints
 from vizier_ai.mock_data import generate_mock_rows
+from vizier_ai.parser import _df_to_result, parse_data
 from vizier_ai.models.insights import (
     ConstrainedInsightCandidates,
     InsightCandidates,
@@ -88,12 +90,23 @@ async def call_llm(
                 Defaults to env LLM_API_KEY.
 
     Returns:
-        The validated output as a plain dict (via model_dump).
+        The validated output as an instance of ``output_type``.
     """
     model_str = model or os.getenv("LLM_MODEL", "google:gemini-3.5-flash-lite")
     key = api_key or os.getenv("LLM_API_KEY")
+    if key is not None and not key.strip():
+        # An empty env var must behave like an unset one, not leak an
+        # empty string into provider construction (cryptic failures).
+        key = None
 
-    llm_model = infer_model(model_str, lambda s: infer_provider_class(s)(api_key=key))
+    try:
+        llm_model = infer_model(model_str, lambda s: infer_provider_class(s)(api_key=key))
+    except UserError as exc:
+        raise UserError(
+            f"{exc.args[0] if exc.args else exc} "
+            f"(vizier-ai: set the LLM_API_KEY environment variable, or pass "
+            f"api_key=... to run_pipeline/call_llm.)"
+        ) from exc
 
     agent = Agent(llm_model, system_prompt=system, output_type=output_type)
     result = await agent.run(user_prompt=prompt)
@@ -103,11 +116,32 @@ async def call_llm(
 
 # --- Data fetching ---
 
-async def fetch_rest_data(method: str, url: str, headers: str, body: str) -> str:
-    """Fetch data from a REST API using aiohttp."""
+def _sniff_format(text: str) -> str:
+    """Infer the payload format of a fetched response: json, jsonl, or csv."""
+    stripped = text.lstrip()
+    if stripped.startswith("[") or stripped.startswith("{"):
+        try:
+            json.loads(text)
+            return "json"
+        except json.JSONDecodeError:
+            return "jsonl"
+    return "csv"
+
+
+def _parse_payload(text: str) -> dict:
+    """Parse a fetched response into the parser dict contract, sniffing the format."""
+    return parse_data(text, _sniff_format(text))
+
+
+async def fetch_rest_data(method: str, url: str, headers: str | dict | None, body: str | None = None) -> dict:
+    """Fetch data from a REST API and parse it into the standard data dict.
+
+    ``headers`` may be a dict or a JSON object string. The response format
+    (JSON, JSONL, or CSV) is sniffed automatically.
+    """
     parsed_headers: dict[str, str] = {}
     if headers:
-        parsed_headers = json.loads(headers)
+        parsed_headers = headers if isinstance(headers, dict) else json.loads(headers)
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
         async with session.request(
@@ -117,18 +151,23 @@ async def fetch_rest_data(method: str, url: str, headers: str, body: str) -> str
             data=body.encode() if body else None,
         ) as resp:
             resp.raise_for_status()
-            return await resp.text()
+            text = await resp.text()
+
+    return _parse_payload(text)
 
 
-async def fetch_sql_data(connection_string: str, query: str) -> str:
-    """Execute a SQL query and return results as JSON using pandas."""
+async def fetch_sql_data(connection_string: str, query: str) -> dict:
+    """Execute a SQL query and return the standard data dict."""
     from sqlalchemy import create_engine, text
 
     engine = create_engine(connection_string)
-    with engine.connect() as conn:
-        df = pd.read_sql(text(query), conn)
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(text(query), conn)
+    finally:
+        engine.dispose()
 
-    return df.to_json(orient="records", force_ascii=False)
+    return _df_to_result(df, "json")
 
 # --- Pipeline ---
 
@@ -153,7 +192,8 @@ async def run_pipeline(
 
     Args:
         schema_text: Free-form text description of the dataset.
-        real_data: Parsed data dict (from parse_data) or None.
+        real_data: Parsed data dict (from parse_data or the fetchers), a
+            pandas DataFrame, or None (mock-data path).
         model: LLM model string (e.g. "google:gemini-3.5-flash-lite").
         api_key: API key for the LLM provider.
         schema_system_prompt: Override the default schema-mapping prompt.
@@ -165,15 +205,21 @@ async def run_pipeline(
             cannot be satisfied; UnsatisfiableConstraintsError is raised then.
 
     Returns:
-        dict with shape: { "insights": { "insights": [...] } }
-        Each insight has plotlyData/plotlyLayout pre-built.
+        An ``Insights`` object. Each ``result.insights[i]`` carries its
+        pre-built Plotly spec in ``chart_spec.plotlyData`` /
+        ``chart_spec.plotlyLayout``; render with ``insight.figure()`` or
+        ``result.save_html(directory)`` (requires ``vizier-ai[plot]``).
+        ``dataset_schema`` and ``data_profile`` are included so the result
+        can be saved to a bundle and re-rendered later.
     """
     schema_system = schema_system_prompt or DEFAULT_SCHEMA_SYSTEM_PROMPT
     insight_system = insight_prompt or DEFAULT_INSIGHT_SYSTEM_PROMPT
     profile_system = data_profile_system_prompt or DEFAULT_DATA_PROFILE_SYSTEM_PROMPT
 
+    if isinstance(real_data, pd.DataFrame):
+        real_data = parse_data(real_data)
 
-    real_rows = real_data.get("rows", [])
+    real_rows = (real_data or {}).get("rows", [])
     use_mock = len(real_rows) == 0
     llm_kwargs = {"model": model, "api_key": api_key}
 

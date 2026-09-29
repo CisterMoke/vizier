@@ -6,12 +6,14 @@ Plotly-compatible trace and layout dicts for the frontend to render.
 
 import math
 import os
-import re
 from typing import Any
 
-from jsonpath import search as jsonpath_search
+from jsonpath import ExprSyntaxError, JSONPathTypeError
+from jsonpath import compile as jsonpath_compile
 
-from vizier_ai.models.insights import Insight, TraceFilter, TraceSpec
+from vizier_ai.mock_data import generate_mock_rows
+from vizier_ai.models.data_profile import DataProfile
+from vizier_ai.models.insights import ChartSpec, Insight, TraceFilter, TraceSpec
 
 FONT_COLOR = "#e2e8f0"
 GRID_COLOR = "rgba(148, 163, 184, 0.15)"
@@ -51,71 +53,42 @@ def _to_number(value: Any) -> float:
     return 0.0
 
 
-_SAFE_SEGMENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+def _compiled_pair(path: str):
+    """Compile a field path into (primary, fallback) JSONPath instances.
 
-
-def _escape_jsonpath_segment(segment: str) -> str:
-    """Return a safe JSONPath representation of a single path segment.
-
-    Simple identifiers (letters, digits, underscore) are returned as-is.
-    Anything else is wrapped in single-quoted bracket notation: ``['segment']``.
+    The LLM always emits bracket-notation paths ($['field']), which
+    resolve on the primary attempt. The fallback is a safety net for
+    dot-notation paths that name a single literal key with reserved
+    characters (e.g. ``$.revenue.usd`` for the flat key ``revenue.usd``):
+    it reinterprets the whole remainder as one bracket-escaped key.
+    Returns ``None`` for the fallback when no remainder exists or the
+    escaped variant is not a valid expression.
     """
-    if _SAFE_SEGMENT.match(segment):
-        return segment
-    return f"['{segment}']"
-
-
-def _safe_jsonpath(path: str, row: dict) -> list:
-    """Resolve a JSONPath against a row, handling field names with reserved characters.
-
-    The jsonpath-python library treats ``.`` as a path separator, so a field
-    named ``revenue.usd`` accessed via ``$.revenue.usd`` is interpreted as
-    nested access (``row['revenue']['usd']``) rather than a flat key.
-
-    This function tries the path as-is first. If no match is found, it
-    progressively merges dot-separated segments from the end and wraps them
-    in bracket notation until a match is found or all options are exhausted.
-    """
-    if path.startswith("$"):
-        rest = path[1:]
-        if rest.startswith("."):
-            rest = rest[1:]
-    else:
-        rest = path
-
-    if not rest:
-        return jsonpath_search(path, row) if path.startswith("$") else jsonpath_search(f"$.{path}", row)
-
     full_path = path if path.startswith("$") else f"$.{path}"
-    result = jsonpath_search(full_path, row)
-    if result:
-        return result
+    primary = jsonpath_compile(full_path)
 
-    segments = rest.split(".")
-    if len(segments) == 1:
-        escaped = _escape_jsonpath_segment(segments[0])
-        if escaped != segments[0]:
-            return jsonpath_search(f"${escaped}" if escaped.startswith("[") else f"$.{escaped}", row)
-        return result
+    rest = full_path[1:]
+    if rest.startswith("."):
+        rest = rest[1:]
+    if not rest:
+        return primary, None
 
-    for merge_start in range(len(segments) - 1, -1, -1):
-        merged_key = ".".join(segments[merge_start:])
-        prefix_segments = segments[:merge_start]
+    try:
+        fallback = jsonpath_compile(f"$['{rest}']")
+    except (ExprSyntaxError, JSONPathTypeError):
+        return primary, None
+    return primary, fallback
 
-        safe_path = "$"
-        for seg in prefix_segments:
-            escaped = _escape_jsonpath_segment(seg)
-            if escaped.startswith("["):
-                safe_path += escaped
-            else:
-                safe_path += f".{escaped}"
-        safe_path += _escape_jsonpath_segment(merged_key)
 
-        result = jsonpath_search(safe_path, row)
-        if result:
-            return result
-
-    return []
+def _resolve_column(rows: list[dict], primary, fallback) -> list:
+    """Resolve a compiled path over all rows into one value column."""
+    column = []
+    for row in rows:
+        matches = primary.parse(row)
+        if not matches and fallback is not None:
+            matches = fallback.parse(row)
+        column.append(matches[0] if matches else None)
+    return column
 
 
 def _to_axis_label(json_path: str) -> str:
@@ -126,11 +99,10 @@ def _to_axis_label(json_path: str) -> str:
 
 
 def _resolve_values(rows: list[dict], json_path: str) -> list:
-    result = []
-    for row in rows:
-        matches = _safe_jsonpath(json_path, row)
-        result.append(matches[0] if matches else None)
-    return result
+    """Resolve a JSONPath over rows into a value list (kept for bundle
+    compatibility checks and direct tests)."""
+    primary, fallback = _compiled_pair(json_path)
+    return _resolve_column(rows, primary, fallback)
 
 
 def _aggregate(x: list, y: list, func: str) -> tuple[list, list]:
@@ -203,11 +175,11 @@ def _matches_filter(value: Any, filter_spec: TraceFilter) -> bool:
     return True
 
 
-def _filter_dataset(rows: list[dict], filter_spec: TraceFilter) -> list[dict]:
-    field = filter_spec.field
-    field_values = _resolve_values(rows, field)
+def _filter_indices(columns: dict[str, list], filter_spec: TraceFilter) -> list[int]:
+    """Row indices whose filter-field values match the filter spec."""
+    field_values = columns[filter_spec.field]
     return [
-        rows[i] for i in range(len(field_values))
+        i for i in range(len(field_values))
         if _matches_filter(field_values[i], filter_spec)
     ]
 
@@ -281,25 +253,54 @@ def _take(values: list, indices: list[int]) -> list:
     return [values[i] for i in indices]
 
 
+def _trace_paths(trace_spec: TraceSpec) -> list[str]:
+    """All field paths a trace reads: x, y, optional z and filter field."""
+    paths = [trace_spec.x_axis, trace_spec.y_axis]
+    if trace_spec.z_axis:
+        paths.append(trace_spec.z_axis)
+    if trace_spec.filter:
+        paths.append(trace_spec.filter.field)
+    return paths
+
+
 def build_trace(
         trace_spec: TraceSpec,
         rows: list[dict],
         color_index: int,
         y_index: int,
+        columns: dict[str, list] | None = None,
     ) -> dict:
+    """Build one Plotly trace dict.
+
+    ``columns`` holds pre-resolved value columns keyed by field path (see
+    ``build_plotly_spec``, which resolves each unique path once for all
+    traces). When omitted, the trace resolves its own paths over ``rows``.
+    """
     color = TRACE_COLORS[color_index % len(TRACE_COLORS)]
 
-    filtered = rows
-    if trace_spec.filter:
-        filtered = _filter_dataset(rows, trace_spec.filter)
+    if columns is None:
+        columns = {
+            path: _resolve_column(rows, *_compiled_pair(path))
+            for path in _trace_paths(trace_spec)
+        }
 
-    x = [_to_datum(v) for v in _resolve_values(filtered, trace_spec.x_axis)]
-    y = [_to_datum(v) for v in _resolve_values(filtered, trace_spec.y_axis)]
-    z = (
-        [_to_number(v) for v in _resolve_values(filtered, trace_spec.z_axis)]
-        if trace_spec.z_axis
-        else None
-    )
+    if trace_spec.filter:
+        indices = _filter_indices(columns, trace_spec.filter)
+        x = [_to_datum(columns[trace_spec.x_axis][i]) for i in indices]
+        y = [_to_datum(columns[trace_spec.y_axis][i]) for i in indices]
+        z = (
+            [_to_number(columns[trace_spec.z_axis][i]) for i in indices]
+            if trace_spec.z_axis
+            else None
+        )
+    else:
+        x = [_to_datum(v) for v in columns[trace_spec.x_axis]]
+        y = [_to_datum(v) for v in columns[trace_spec.y_axis]]
+        z = (
+            [_to_number(v) for v in columns[trace_spec.z_axis]]
+            if trace_spec.z_axis
+            else None
+        )
 
     if trace_spec.aggregation:
         x, y = _aggregate(x, y, trace_spec.aggregation)
@@ -415,15 +416,83 @@ def build_layout(title: str, trace_specs: list[TraceSpec]) -> dict:
     return layout
 
 
+def edit_chart(
+        insight: Insight,
+        rows: list[dict] | None = None,
+        *,
+        chart_type: str | None = None,
+        traces: list[TraceSpec] | None = None,
+        data_profile: DataProfile | dict | None = None,
+    ) -> dict:
+    """Rebuild an insight's Plotly spec with a modified chart type or traces.
+
+    The most common edit — "show this chart as a line instead" — needs only
+    ``edit_chart(insight, rows, chart_type="line")``. The insight's own
+    traces are reused with only the chart type substituted, so repeated
+    edits always start from the original recipe.
+
+    Args:
+        insight: The insight to re-render (traces and metadata are reused).
+        rows: Data rows to plot. When omitted, mock rows are regenerated
+            from ``data_profile`` and the insight's ``mock_seed`` (the
+            no-real-data path).
+        chart_type: New chart type applied to every trace (bar, line, pie,
+            scatter, heatmap, geomap). When omitted, the insight's traces
+            are re-rendered unchanged. Ignored when ``traces`` is given.
+        traces: Full trace override; takes precedence over ``chart_type``.
+        data_profile: Mock-data recipe (``Insights.data_profile``) used to
+            regenerate rows when ``rows`` is omitted.
+
+    Returns:
+        A Plotly ``{data, layout}`` dict, like ``build_plotly_spec``.
+    """
+    if traces is None:
+        if chart_type is None:
+            traces = list(insight.chart_spec.traces)
+        else:
+            traces = [
+                t.model_copy(update={"chart_type": chart_type})
+                for t in insight.chart_spec.traces
+            ]
+
+    if rows is None:
+        if data_profile is None:
+            raise ValueError("edit_chart needs rows, or data_profile to regenerate mock rows")
+        profile = data_profile.model_dump() if isinstance(data_profile, DataProfile) else data_profile
+        seed = insight.mock_seed if insight.mock_seed is not None else 1337
+        rows = generate_mock_rows(profile, seed=seed)
+
+    shell = Insight(
+        id=insight.id,
+        metadata=insight.metadata,
+        chart_spec=ChartSpec(traces=traces),
+    )
+    return build_plotly_spec(shell, rows)
+
+
 def build_plotly_spec(insight: Insight, rows: list[dict]) -> dict:
-    """Build a full Plotly spec {data, layout} from an insight and data rows."""
+    """Build a full Plotly spec {data, layout} from an insight and data rows.
+
+    Each unique field path across all traces is compiled and resolved once
+    over all rows; traces (and their filters) index into the shared columns
+    instead of re-resolving the same paths per trace.
+    """
     chart_spec = insight.chart_spec
     traces = chart_spec.traces
     title = insight.metadata.title
     if not traces:
         return {"data": [], "layout": _dark_layout(title)}
 
-    plotly_traces = [build_trace(t, rows, i, i+1) for i, t in enumerate(traces)]
+    columns: dict[str, list] = {}
+    for trace in traces:
+        for path in _trace_paths(trace):
+            if path not in columns:
+                columns[path] = _resolve_column(rows, *_compiled_pair(path))
+
+    plotly_traces = [
+        build_trace(t, rows, i, i+1, columns=columns)
+        for i, t in enumerate(traces)
+    ]
     layout = build_layout(title, traces)
 
     return {"data": plotly_traces, "layout": layout}
