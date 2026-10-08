@@ -23,7 +23,9 @@ vi.mock('@mantine/hooks', async (importOriginal) => {
 vi.mock('react-grid-layout/legacy', () => ({
   default: () => null,
   WidthProvider: (Wrapped: unknown) => (props: Record<string, unknown>) => (
-    <div data-testid="grid-mock">{props.children as never}</div>
+    <div data-testid="grid-mock" data-layout={JSON.stringify(props.layout ?? [])}>
+      {props.children as never}
+    </div>
   ),
 }))
 
@@ -107,6 +109,29 @@ it('labels the placeholder view Dashboard and draws svg icons for rail views', a
   fireEvent.click(rail.querySelectorAll('button')[0])
   expect(await screen.findByText('Dashboard')).toBeInTheDocument()
   expect(screen.queryByText('Sandbox')).not.toBeInTheDocument()
+})
+
+it('offers a column switcher that rebuilds the mosaic layout', async () => {
+  callGenerateMock.mockResolvedValue({
+    sessionId: 's1',
+    insights: [insight('i1', 'First'), insight('i2', 'Second')],
+    context: null,
+  })
+  renderApp()
+  await generate()
+
+  await screen.findByTestId('grid-mock')
+  const readLayout = () => JSON.parse(screen.getByTestId('grid-mock').dataset.layout ?? '[]')
+  expect(readLayout()).toEqual([
+    expect.objectContaining({ i: 'i1', x: 0, w: 6 }),
+    expect.objectContaining({ i: 'i2', x: 6, w: 6 }),
+  ])
+
+  fireEvent.click(screen.getByRole('radio', { name: '1' }))
+  expect(readLayout()).toEqual([
+    expect.objectContaining({ i: 'i1', x: 0, w: 12 }),
+    expect.objectContaining({ i: 'i2', x: 0, w: 12 }),
+  ])
 })
 
 it('renders the studio shell with rail, panel, and empty state', () => {

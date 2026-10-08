@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState } from 'react'
-import { Button, Group, Text } from '@mantine/core'
+import { Button, Group, SegmentedControl, Text } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import type { GenerateRequest } from './domain/types'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
+import { rebuildLayout } from './domain/layout'
 import { WorkspaceProvider, useWorkspace, type RemovedInsight } from './store/workspace'
 import { ControlPanel } from './components/ControlPanel'
 import { EmptyState } from './components/EmptyState'
@@ -109,6 +110,7 @@ function Studio() {
   const [hasRealData, setHasRealData] = useState(false)
   const [constraints, setConstraints] = useState<ConstraintsState>(EMPTY_CONSTRAINTS)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [columns, setColumns] = useState(2)
 
   const handleGenerate = async (request: GenerateRequest) => {
     setProgress({ phase: 'prepare', label: 'Preparing data…' })
@@ -153,6 +155,13 @@ function Studio() {
       )
     } finally {
       setIsRegenerating(false)
+    }
+  }
+
+  const changeColumns = (next: number) => {
+    setColumns(next)
+    if (workspace.insights.length > 0) {
+      workspace.setLayout(rebuildLayout(workspace.layout, next))
     }
   }
 
@@ -202,9 +211,25 @@ function Studio() {
         {gridEmpty ? (
           <EmptyState />
         ) : (
-          <Suspense fallback={<Text c="dimmed" size="sm">Loading charts...</Text>}>
-            <InsightGrid onEditOpen={setEditingId} onDelete={handleDelete} />
-          </Suspense>
+          <>
+            <Group justify="end" mb="xs">
+              <SegmentedControl
+                size="xs"
+                radius="md"
+                aria-label="Grid columns"
+                data={[
+                  { label: '1', value: '1' },
+                  { label: '2', value: '2' },
+                  { label: '3', value: '3' },
+                ]}
+                value={String(columns)}
+                onChange={(value) => changeColumns(Number(value))}
+              />
+            </Group>
+            <Suspense fallback={<Text c="dimmed" size="sm">Loading charts...</Text>}>
+              <InsightGrid onEditOpen={setEditingId} onDelete={handleDelete} />
+            </Suspense>
+          </>
         )}
       </main>
 
