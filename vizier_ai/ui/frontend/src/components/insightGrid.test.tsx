@@ -97,7 +97,7 @@ it('emits layout items for every insight with default footprints', () => {
   renderGrid([insight('a')])
   fireEvent.click(screen.getByTestId('hydrate'))
   const layout = JSON.parse(screen.getByTestId('grid-layout').dataset.layout ?? '[]')
-  expect(layout).toEqual([{ i: 'a', x: 0, y: 0, w: 4, h: 4, minW: 2, minH: 2 }])
+  expect(layout).toEqual([{ i: 'a', x: 0, y: 0, w: 6, h: 4, minW: 2, minH: 2 }])
 })
 
 it('syncs layout changes from the grid into the workspace', () => {

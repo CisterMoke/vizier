@@ -61,3 +61,24 @@ test('generate renders the mosaic and dragging a card moves it', async ({ page }
   const after = await item.getAttribute('style')
   expect(after).not.toBe(before)
 })
+
+test('the visible resize handle resizes a cell', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel(/data description/i).fill('orders(id int, total decimal)')
+  await page.getByRole('button', { name: /generate insights/i }).click()
+
+  const item = page.locator('.react-grid-item').first()
+  await expect(item).toBeVisible()
+
+  const handle = page.locator('.grid-resize-handle').first()
+  await expect(handle).toBeVisible()
+  const before = await item.getAttribute('style')
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x - 120, box!.y - 60, { steps: 5 })
+  await page.mouse.up()
+
+  const after = await item.getAttribute('style')
+  expect(after).not.toBe(before)
+})

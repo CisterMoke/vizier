@@ -13,8 +13,10 @@ const MARGIN: [number, number] = [10, 10]
 
 /** Always-visible, in-theme resize affordance for the grid cells. Carries
  * the library class so react-grid-layout positions it and cancels card
- * drags started on it. */
-const ResizeHandle = () => (
+ * drags started on it. A plain element, not a component: react-resizable
+ * clones it with the ref its drag core binds to — a component would
+ * swallow the ref and silently break resizing. */
+const resizeHandle = (
   <span
     className="react-resizable-handle react-resizable-handle-se grid-resize-handle"
     data-testid="resize-handle"
@@ -62,7 +64,7 @@ export function InsightGrid({ onEditOpen, onDelete }: InsightGridProps) {
       compactType="vertical"
       preventCollision={false}
       draggableHandle=".grid-drag-handle"
-      resizeHandle={<ResizeHandle />}
+      resizeHandle={resizeHandle}
     >
       {workspace.insights.map((insight) => (
         <div key={insight.id} style={{ display: 'flex' }}>
