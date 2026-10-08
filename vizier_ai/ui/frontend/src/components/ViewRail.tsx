@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
-import { useFocusWithin } from '@mantine/hooks'
+import { useClickOutside, useFocusWithin } from '@mantine/hooks'
 
 export interface ViewItem {
   id: string
@@ -18,16 +18,22 @@ interface ViewRailProps {
 
 export function ViewRail({ views, activeView, onSelect }: ViewRailProps) {
   const [expanded, setExpanded] = useState(false)
-  const { ref, focused } = useFocusWithin<HTMLDivElement>()
+  const { ref: focusRef, focused } = useFocusWithin<HTMLDivElement>()
+  const clickOutsideRef = useClickOutside<HTMLDivElement>(() => setExpanded(false))
 
   useEffect(() => {
     if (!focused) setExpanded(false)
   }, [focused])
 
+  const railRef = (node: HTMLDivElement | null) => {
+    focusRef(node)
+    clickOutsideRef.current = node
+  }
+
   return (
     <div className="w-14 shrink-0">
       <div
-        ref={ref}
+        ref={railRef}
         role="navigation"
         aria-label="Views"
         data-expanded={String(expanded)}

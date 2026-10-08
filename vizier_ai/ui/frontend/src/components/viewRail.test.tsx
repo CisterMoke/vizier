@@ -34,6 +34,18 @@ it('expands on item interaction and collapses when focus leaves the rail', async
   await waitFor(() => expect(nav.dataset.expanded).toBe('false'))
 })
 
+it('collapses when clicking outside the rail', async () => {
+  renderRail()
+  const nav = screen.getByRole('navigation')
+  const studio = screen.getByRole('button', { name: /studio/i }) as HTMLButtonElement
+  studio.focus()
+  fireEvent.click(studio)
+  await waitFor(() => expect(nav.dataset.expanded).toBe('true'))
+
+  fireEvent.mouseDown(document.body)
+  await waitFor(() => expect(nav.dataset.expanded).toBe('false'))
+})
+
 it('marks the active view and calls onSelect only for enabled items', () => {
   const onSelect = vi.fn()
   renderRail(onSelect)
