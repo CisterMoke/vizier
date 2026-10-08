@@ -32,7 +32,7 @@ def make_profile() -> DataProfile:
 def make_saved_insight(mock_seed: int | None = 1338) -> SavedInsight:
     return SavedInsight(
         id="i1",
-        metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="T", summary="S"),
         traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
         mock_seed=mock_seed,
     )
@@ -124,7 +124,7 @@ class FakeLLM:
         return InsightCandidates(candidates=[
             InsightCandidate(
                 id=f"i{i}",
-                metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+                metadata=InsightMetadata(title="T", summary="S"),
                 traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
             )
             for i in range(2)
@@ -262,7 +262,7 @@ class TestBundleHelpers:
         return Insights(
             insights=[Insight(
                 id="i1",
-                metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+                metadata=InsightMetadata(title="T", summary="S"),
                 chart_spec=ChartSpec(
                     traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
                     plotlyData=[{"type": "bar", "x": ["King"], "y": [1]}],
@@ -323,3 +323,82 @@ class TestBundleHelpers:
         assert warnings == []
         trace = result.insights[0].chart_spec.plotlyData[0]
         assert trace["x"] == ["King", "Pierce", "King"]
+
+
+class TestBundleFieldLabels:
+    """render_bundle axis titles use the bundle schema's field names."""
+
+    def test_render_bundle_labels_axes_with_field_names(self, tmp_path):
+        from vizier_ai import load_bundle, render_bundle, save_bundle
+        from vizier_ai.models.insights import ChartSpec, Insight
+
+        insights = Insights(
+            insights=[Insight(
+                id="i1",
+                metadata=InsightMetadata(title="T", summary="S"),
+                chart_spec=ChartSpec(
+                    traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
+                ),
+            )],
+            dataset_schema=make_schema(),
+            data_profile=make_profile(),
+        )
+
+        save_bundle(insights, tmp_path / "b.json")
+        result, _warnings = render_bundle(load_bundle(tmp_path / "b.json"))
+
+        layout = result.insights[0].chart_spec.plotlyLayout
+        assert layout["xaxis"]["title"]["text"] == "County"
+
+
+class TestBundleExcelOptions:
+    """Bundles remember the Excel options used for the original upload and
+    apply them automatically when an Excel source is attached."""
+
+    def make_excel(self, tmp_path):
+        from openpyxl import Workbook
+
+        path = tmp_path / "data.xlsx"
+        wb = Workbook()
+        wb.remove(wb.active)
+        data = wb.create_sheet("Data")
+        data.append(["county", "count"])
+        data.append(["King", 5])
+        notes = wb.create_sheet("Notes")
+        notes.append(["ignore me"])
+        wb.save(path)
+        return path
+
+    def test_render_bundle_applies_saved_sheet(self, tmp_path):
+        from vizier_ai.models.excel_options import ExcelOptions
+        from vizier_ai import load_bundle, render_bundle, save_bundle
+
+        xlsx = self.make_excel(tmp_path)
+        bundle = InsightBundle(
+            dataset_schema=make_schema(),
+            data_profile=None,
+            insights=[make_saved_insight(mock_seed=None)],
+            excel_options=ExcelOptions(sheet_name="Data"),
+        )
+        save_bundle(bundle, tmp_path / "b.json")
+
+        result, warnings = render_bundle(load_bundle(tmp_path / "b.json"), source=xlsx)
+
+        assert warnings == []
+        trace = result.insights[0].chart_spec.plotlyData[0]
+        assert trace["x"] == ["King"]
+
+    def test_first_sheet_is_parsed_without_options(self, tmp_path):
+        xlsx = self.make_excel(tmp_path)
+        bundle = InsightBundle(
+            dataset_schema=make_schema(),
+            data_profile=None,
+            insights=[make_saved_insight(mock_seed=None)],
+        )
+
+        result, warnings = render_bundle(bundle, source=xlsx)
+
+        # without sheet options the FIRST sheet (Data) is parsed
+        assert warnings == []
+        trace = result.insights[0].chart_spec.plotlyData[0]
+        assert trace["x"] == ["King"]

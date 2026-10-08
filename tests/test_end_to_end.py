@@ -23,7 +23,7 @@ from vizier_ai.models.insights import (
 def make_insight(title: str, traces: list[TraceSpec]) -> Insight:
     return Insight(
         id="i1",
-        metadata=InsightMetadata(title=title, summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title=title, summary="S"),
         chart_spec=ChartSpec(traces=traces),
     )
 

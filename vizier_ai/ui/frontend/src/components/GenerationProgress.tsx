@@ -1,0 +1,218 @@
+import { useEffect, useRef, useState } from 'react'
+import { Container, Group, Text } from '@mantine/core'
+
+export type GenerationPhase = 'prepare' | 'schema' | 'insights' | 'charts' | 'done'
+
+interface GenerationProgressProps {
+  phase: GenerationPhase
+  label: string
+  chartIndex?: number
+  chartTotal?: number
+  onFinished?: () => void
+}
+
+interface Checkpoint {
+  key: string
+  position: number
+  title: string
+}
+
+/** Checkpoint dots on the track: schema, insights, charts, done. */
+const CHECKPOINTS: Checkpoint[] = [
+  { key: 'schema', position: 25, title: 'Schema' },
+  { key: 'insights', position: 50, title: 'Insights' },
+  { key: 'charts', position: 75, title: 'Charts' },
+  { key: 'done', position: 100, title: 'Done' },
+]
+
+/** Where the fill creeps toward while each checkpoint is pending. The
+ * approach is asymptotic — the bar never quite reaches its target, so a
+ * completed checkpoint is always visibly "earned". */
+const CREEP_TAU_MS = 1200
+
+/** The two LLM calls (schema extraction, insight generation) are the long,
+ * uncertain waits: with this time constant the fill covers ~95% of the gap
+ * after a minute — almost reaching the checkpoint it is waiting on. Data
+ * preparation and chart building are quick, local steps and keep the
+ * snappy creep. */
+const SLOW_CREEP_TAU_MS = 20_000
+
+const creepTauMs = (phase: GenerationPhase): number =>
+  phase === 'schema' || phase === 'insights' ? SLOW_CREEP_TAU_MS : CREEP_TAU_MS
+
+/** Finishing is certain: ease out to 100% quickly instead of creeping. */
+const FINISH_DURATION_MS = 450
+const FADE_DURATION_MS = 250
+
+/** Progress earned so far: each phase transition means the previous
+ * checkpoint's work completed. */
+const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal?: number): number => {
+  switch (phase) {
+    case 'prepare':
+      return 0
+    case 'schema':
+      return 0
+    case 'insights':
+      return 25
+    case 'charts':
+      if (chartTotal && chartTotal > 0) {
+        return 50 + (25 * ((chartIndex ?? 0) + 1)) / chartTotal
+      }
+      return 50
+    case 'done':
+      return 100
+  }
+}
+
+const targetPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal?: number): number => {
+  switch (phase) {
+    case 'prepare':
+      return 25
+    case 'schema':
+      return 25
+    case 'insights':
+      return 50
+    case 'charts':
+      if (chartTotal && chartTotal > 0) {
+        return 50 + (25 * ((chartIndex ?? 0) + 1)) / chartTotal
+      }
+      return 75
+    case 'done':
+      return 100
+  }
+}
+
+const checkpointFilled = (checkpoint: Checkpoint, phase: GenerationPhase, chartIndex?: number, chartTotal?: number): boolean => {
+  const reached = reachedPosition(phase, chartIndex, chartTotal)
+  return checkpoint.position <= reached + 0.01
+}
+
+const checkpointActive = (checkpoint: Checkpoint, phase: GenerationPhase): boolean => {
+  switch (checkpoint.key) {
+    case 'schema':
+      return phase === 'prepare' || phase === 'schema'
+    case 'insights':
+      return phase === 'insights'
+    case 'charts':
+      return phase === 'charts'
+    case 'done':
+      return false
+  }
+  return false
+}
+
+/** Slim progress strip hovering at the top of the viewport. The fill
+ * creeps asymptotically toward the next checkpoint while the pipeline is
+ * waiting on it, eases smoothly between updates, and finishes with a
+ * short fade once the final checkpoint is reached. */
+export function GenerationProgress({
+  phase,
+  label,
+  chartIndex,
+  chartTotal,
+  onFinished,
+}: GenerationProgressProps) {
+  const fillRef = useRef<HTMLDivElement>(null)
+  const pctRef = useRef<HTMLDivElement>(null)
+  const displayRef = useRef(0)
+  const targetRef = useRef(targetPosition(phase, chartIndex, chartTotal))
+  const finishedRef = useRef(false)
+  const [closing, setClosing] = useState(false)
+
+  targetRef.current = targetPosition(phase, chartIndex, chartTotal)
+
+  useEffect(() => {
+    if (phase !== 'done') {
+      setClosing(false)
+    }
+  }, [phase])
+
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    let phaseStart = performance.now()
+    let startValue = displayRef.current
+
+    const paint = (value: number) => {
+      displayRef.current = value
+      if (fillRef.current) fillRef.current.style.width = `${value}%`
+      if (pctRef.current) pctRef.current.textContent = `${Math.round(value)}%`
+    }
+
+    const tick = () => {
+      // one clock for everything — rAF's callback timestamp can come from
+      // a different time origin (jsdom, embedded webviews); dt is clamped
+      // so throttled tabs and long pauses never teleport the bar
+      const now = performance.now()
+      const dt = Math.min(Math.max(now - last, 0), 100)
+      last = now
+      const target = targetRef.current
+
+      if (phase === 'done') {
+        // certainty: ease out to 100%, then fade and finish
+        const t = Math.min(1, (now - phaseStart) / FINISH_DURATION_MS)
+        const eased = 1 - (1 - t) ** 3
+        paint(startValue + (100 - startValue) * eased)
+        if (t >= 1 && !finishedRef.current) {
+          finishedRef.current = true
+          setClosing(true)
+          window.setTimeout(() => onFinished?.(), FADE_DURATION_MS)
+          return
+        }
+      } else {
+        // uncertainty: exponential approach — asymptotic creep toward
+        // the next checkpoint, never quite reaching it
+        const current = displayRef.current
+        const next = target - (target - current) * Math.exp(-dt / creepTauMs(phase))
+        paint(next)
+      }
+
+      raf = requestAnimationFrame(tick)
+    }
+
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [phase, onFinished])
+
+  return (
+    <div
+      className={`fixed top-0 left-0 right-0 z-[200] border-b border-gray-700/50 bg-[#0a0a0f]/90 backdrop-blur-md transition-opacity duration-200 ${closing ? 'opacity-0' : 'opacity-100'}`}
+      data-testid="generation-progress"
+      role="status"
+      aria-label={label}
+    >
+      <Container size="xl" px="md">
+        <Group gap="md" h={42} wrap="nowrap">
+          <Text size="sm" className="min-w-0 flex-[0_1_38%] truncate">{label}</Text>
+          <div className="relative h-1.5 flex-1 rounded-full bg-gray-700/40">
+            <div
+              ref={fillRef}
+              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-300"
+              style={{ width: '0%' }}
+            />
+            {CHECKPOINTS.map((checkpoint) => {
+              const filled = checkpointFilled(checkpoint, phase, chartIndex, chartTotal)
+              const active = !filled && checkpointActive(checkpoint, phase)
+              return (
+                <div
+                  key={checkpoint.key}
+                  data-testid={`checkpoint-${checkpoint.key}`}
+                  title={checkpoint.title}
+                  className={`absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border transition-all duration-300 ${
+                    filled
+                      ? 'border-cyan-300 bg-cyan-300 shadow-[0_0_6px_rgba(34,211,238,0.8)]'
+                      : active
+                        ? 'animate-pulse border-cyan-400/70 bg-[#0a0a0f]'
+                        : 'border-gray-600 bg-[#0a0a0f]'
+                  }`}
+                  style={{ left: `${checkpoint.position}%` }}
+                />
+              )
+            })}
+          </div>
+          <div ref={pctRef} className="w-10 text-right" />
+        </Group>
+      </Container>
+    </div>
+  )
+}

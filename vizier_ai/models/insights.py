@@ -34,13 +34,12 @@ class ChartSpec(BaseModel):
 class InsightMetadata(BaseModel):
     title: str = Field(..., description="Short, non-empty chart title.")
     summary: str = Field(..., description="Non-empty one-to-two sentence summary of what the chart shows.")
-    keyIdea: str = Field(..., description="Non-empty concise reasoning for why this insight is interesting.")
     description: str | None = Field(default=None, description="Optional longer description.")
 
 
 class InsightCandidate(BaseModel):
     id: str = Field(..., description="Unique, non-empty insight identifier.")
-    metadata: InsightMetadata = Field(..., description="Insight metadata with non-empty title, summary, and keyIdea.")
+    metadata: InsightMetadata = Field(..., description="Insight metadata with non-empty title and summary.")
     traces: list[TraceSpec] = Field(min_length=1, description="At least one trace defining the chart.")
 
 

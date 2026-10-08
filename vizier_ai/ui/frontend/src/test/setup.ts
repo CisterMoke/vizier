@@ -35,3 +35,6 @@ if (typeof document !== 'undefined' && !document.fonts) {
     }
   })
 }
+
+// jsdom does not implement scrollIntoView; Mantine dropdowns call it on open.
+Element.prototype.scrollIntoView = () => {}

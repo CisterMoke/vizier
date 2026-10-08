@@ -213,3 +213,119 @@ class TestParseDataDataFrame:
 
         assert isinstance(row["ts"], str)
         assert isinstance(row["total"], int)
+
+
+class TestExcelOptionsModel:
+    def test_accepts_defaults(self):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        options = ExcelOptions()
+
+        assert options.sheet_name is None
+        assert options.header is True
+        assert options.skip_rows == 0
+
+    def test_accepts_named_sheet(self):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        options = ExcelOptions(sheet_name="Sales")
+
+        assert options.sheet_name == "Sales"
+
+    def test_accepts_sheet_index(self):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        assert ExcelOptions(sheet_name=1).sheet_name == 1
+
+    def test_rejects_negative_skip_rows(self):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        with pytest.raises(ValidationError):
+            ExcelOptions(skip_rows=-1)
+
+
+class TestParseExcel:
+    @staticmethod
+    def write_xlsx(path, sheets: dict[str, list[list]]):
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.remove(wb.active)
+        for name, rows in sheets.items():
+            sheet = wb.create_sheet(name)
+            for row in rows:
+                sheet.append(row)
+        wb.save(path)
+
+    def test_parses_basic_xlsx(self, tmp_path):
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["county", "total"], ["King", 100], ["Pierce", 200]]})
+
+        result = parse_data(str(path), "excel")
+
+        assert result["format"] == "excel"
+        assert result["columns"] == ["county", "total"]
+        assert result["rowCount"] == 2
+        assert result["rows"][0] == {"county": "King", "total": 100}
+
+    def test_xlsx_hint_alias(self, tmp_path):
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["a"], [1]]})
+
+        assert parse_data(path, "xlsx")["format"] == "excel"
+
+    def test_sheet_selection_by_name(self, tmp_path):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {
+            "First": [["sheet", "value"], ["first", 1]],
+            "Second": [["sheet", "value"], ["second", 2]],
+        })
+
+        result = parse_data(path, "excel", excel_options=ExcelOptions(sheet_name="Second"))
+
+        assert result["rows"][0]["sheet"] == "second"
+
+    def test_no_header_generates_column_names(self, tmp_path):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["King", 100], ["Pierce", 200]]})
+
+        result = parse_data(path, "excel", excel_options=ExcelOptions(header=False))
+
+        assert result["columns"] == ["column_1", "column_2"]
+        assert result["rows"][0] == {"column_1": "King", "column_2": 100}
+
+    def test_skip_rows(self, tmp_path):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["# generated"], ["county", "total"], ["King", 100]]})
+
+        result = parse_data(path, "excel", excel_options=ExcelOptions(skip_rows=1))
+
+        assert result["columns"] == ["county", "total"]
+        assert result["rowCount"] == 1
+
+    def test_max_rows_limits_row_count(self, tmp_path):
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["county"], ["King"], ["Pierce"], ["Clark"]]})
+
+        result = parse_data(path, "excel", max_rows=2)
+
+        assert result["rowCount"] == 2
+
+    def test_missing_sheet_raises(self, tmp_path):
+        from vizier_ai.models.excel_options import ExcelOptions
+
+        path = tmp_path / "data.xlsx"
+        self.write_xlsx(path, {"Sheet1": [["county"], ["King"]]})
+
+        with pytest.raises(ValueError):
+            parse_data(path, "excel", excel_options=ExcelOptions(sheet_name="Nope"))
+
+    def test_raw_text_is_not_excel(self):
+        with pytest.raises((ValueError, OSError)):
+            parse_data("not a spreadsheet", "excel")

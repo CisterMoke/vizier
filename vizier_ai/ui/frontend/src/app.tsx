@@ -1,10 +1,13 @@
 import { lazy, Suspense, useState } from 'react'
-import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core'
+import { Container, Paper, Stack, Text, Title } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
 import { ChartErrorBoundary } from './components/ChartErrorBoundary'
 import { DataInputPanel } from './components/DataInputPanel'
 import type { GenerateRequest } from './components/DataInputPanel'
-import { callGenerate, regenerate, loadBundle } from './services/apiClient'
+import { GenerationProgress, type GenerationPhase } from './components/GenerationProgress'
+import { callGenerate, regenerate, loadBundle, type GenerationEvent } from './services/apiClient'
 import type { CsvOptionsPayload } from './domain/csv'
+import type { ExcelOptionsPayload } from './domain/excel'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
 import { useWorkspaceStore } from './store/workspaceStore'
 
@@ -12,13 +15,54 @@ const ChartCarousel = lazy(() =>
   import('./components/ChartCarousel').then((m) => ({ default: m.ChartCarousel }))
 )
 
+interface GenerationProgressState {
+  phase: GenerationPhase
+  label: string
+  chartIndex?: number
+  chartTotal?: number
+}
+
+/** Pipeline events map to progress phases; the component creeps smoothly
+ * toward the next checkpoint between them. The two LLM calls (schema
+ * extraction, insight generation) are the long phases. */
+const progressForEvent = (event: GenerationEvent): GenerationProgressState => {
+  switch (event.type) {
+    case 'prepare':
+      return {
+        phase: 'schema',
+        label: event.rowCount > 0
+          ? `Parsed ${event.rowCount.toLocaleString()} rows — extracting schema…`
+          : 'Extracting schema…',
+      }
+    case 'schema':
+      return { phase: 'insights', label: 'Generating insights…' }
+    case 'insights':
+      return { phase: 'charts', label: `${event.count} insights — building charts…` }
+    case 'chart':
+      return {
+        phase: 'charts',
+        label: `Building chart ${event.index + 1} of ${event.total}`,
+        chartIndex: event.index,
+        chartTotal: event.total,
+      }
+  }
+}
+
+const showError = (title: string, message: string) => {
+  notifications.show({
+    color: 'red',
+    title,
+    message,
+    autoClose: 8000,
+  })
+}
+
 export function App() {
   const workspace = useWorkspaceStore()
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [generationError, setGenerationError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<GenerationProgressState | null>(null)
   const [hasRealData, setHasRealData] = useState(false)
   const [constraints, setConstraints] = useState<ConstraintsState>(EMPTY_CONSTRAINTS)
 
@@ -26,51 +70,58 @@ export function App() {
     workspace.setInsights([])
     workspace.setSessionId('')
     workspace.setCsvOptions(null)
-    setGenerationError(null)
-    setStatusMessage(null)
+    setProgress({ phase: 'prepare', label: 'Preparing data…' })
     setHasRealData(false)
 
     setIsGenerating(true)
 
     try {
-      setStatusMessage('Analyzing data and generating insights...')
-      const result = await callGenerate({ ...request, constraints: buildConstraintsPayload(constraints) })
+      const result = await callGenerate(
+        { ...request, constraints: buildConstraintsPayload(constraints) },
+        (event) => setProgress(progressForEvent(event))
+      )
 
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
       workspace.setBundleContext(result.context)
       workspace.setCsvOptions(result.csvOptions ?? null)
+      workspace.setExcelOptions(result.excelOptions ?? null)
       setHasRealData(request.dataSource.mode !== 'none')
-      setStatusMessage(null)
+      setProgress({ phase: 'done', label: 'Done' })
     } catch (error) {
-      setGenerationError(
+      setProgress(null)
+      showError(
+        'Generation failed',
         error instanceof Error ? error.message : 'Failed to generate analytics.'
       )
     } finally {
       setIsGenerating(false)
-      setStatusMessage(null)
     }
   }
 
   const handleRegenerate = async () => {
     if (!workspace.sessionId) return
 
-    setGenerationError(null)
+    setProgress({ phase: 'prepare', label: 'Regenerating insights…' })
     setIsRegenerating(true)
 
     try {
-      setStatusMessage('Regenerating insights...')
-      const result = await regenerate(workspace.sessionId, buildConstraintsPayload(constraints))
+      const result = await regenerate(
+        workspace.sessionId,
+        buildConstraintsPayload(constraints),
+        (event) => setProgress(progressForEvent(event))
+      )
       workspace.setInsights(result.insights)
       workspace.setBundleContext(result.context)
-      setStatusMessage(null)
+      setProgress({ phase: 'done', label: 'Done' })
     } catch (error) {
-      setGenerationError(
+      setProgress(null)
+      showError(
+        'Regeneration failed',
         error instanceof Error ? error.message : 'Failed to regenerate insights.'
       )
     } finally {
       setIsRegenerating(false)
-      setStatusMessage(null)
     }
   }
 
@@ -78,29 +129,27 @@ export function App() {
     bundle: File,
     data?: File,
     dataFormat?: string,
-    csvOptions?: CsvOptionsPayload
+    csvOptions?: CsvOptionsPayload,
+    excelOptions?: ExcelOptionsPayload
   ) => {
-    setGenerationError(null)
-    setStatusMessage('Loading saved bundle...')
-
     setIsImporting(true)
 
     try {
-      const result = await loadBundle(bundle, data, dataFormat, csvOptions)
+      const result = await loadBundle(bundle, data, dataFormat, csvOptions, excelOptions)
 
       workspace.setSessionId(result.sessionId)
       workspace.setInsights(result.insights)
       workspace.setBundleContext(result.context)
       workspace.setCsvOptions(result.csvOptions ?? null)
+      workspace.setExcelOptions(result.excelOptions ?? null)
       setHasRealData(!!data)
-      setStatusMessage(null)
     } catch (error) {
-      setGenerationError(
+      showError(
+        'Bundle import failed',
         error instanceof Error ? error.message : 'Failed to load bundle.'
       )
     } finally {
       setIsImporting(false)
-      setStatusMessage(null)
     }
   }
 
@@ -119,16 +168,14 @@ export function App() {
             </Text>
           </Paper>
 
-          {generationError ? (
-            <Alert role="alert" color="orange">
-              {generationError}
-            </Alert>
-          ) : null}
-
-          {statusMessage ? (
-            <Alert color="blue">
-              {statusMessage}
-            </Alert>
+          {progress ? (
+            <GenerationProgress
+              phase={progress.phase}
+              label={progress.label}
+              chartIndex={progress.chartIndex}
+              chartTotal={progress.chartTotal}
+              onFinished={() => setProgress(null)}
+            />
           ) : null}
 
           <DataInputPanel
@@ -155,6 +202,7 @@ export function App() {
                 insights={workspace.insights}
                 sessionId={workspace.sessionId}
                 onDelete={handleDeleteCard}
+                schema={workspace.bundleContext?.schema ?? null}
               />
             </Suspense>
           </ChartErrorBoundary>

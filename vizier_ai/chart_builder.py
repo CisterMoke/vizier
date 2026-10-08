@@ -6,6 +6,7 @@ Plotly-compatible trace and layout dicts for the frontend to render.
 
 import math
 import os
+import re
 from typing import Any
 
 from jsonpath import ExprSyntaxError, JSONPathTypeError
@@ -23,6 +24,7 @@ PLOT_BG = "rgba(15, 23, 42, 0.2)"
 
 DEFAULT_GL_TRACE_THRESHOLD = 1000
 DEFAULT_MAX_TRACE_POINTS = 10_000
+DEFAULT_MAX_TICK_LABEL_LENGTH = 24
 
 TRACE_COLORS = [
     "#22d3ee", "#818cf8", "#f472b6", "#fbbf24",
@@ -91,11 +93,26 @@ def _resolve_column(rows: list[dict], primary, fallback) -> list:
     return column
 
 
+_BRACKET_SEGMENT = re.compile(r"\['([^']+)'\]")
+
+
 def _to_axis_label(json_path: str) -> str:
+    # bracket-notation paths ("$['parent']['revenue']") label with the last
+    # segment's content; dot notation falls back to the last dot segment
+    segments = _BRACKET_SEGMENT.findall(json_path)
+    if segments:
+        return segments[-1]
     label = json_path.lstrip("$").lstrip(".")
     if not label:
         return json_path
     return label.split(".")[-1]
+
+
+def _axis_label(json_path: str, field_labels: dict[str, str] | None) -> str:
+    """Schema field name when known, jsonPath tail otherwise."""
+    if field_labels and json_path in field_labels:
+        return field_labels[json_path]
+    return _to_axis_label(json_path)
 
 
 def _resolve_values(rows: list[dict], json_path: str) -> list:
@@ -201,14 +218,72 @@ def _dark_axes(x_label: str = "", y_label: str = "") -> dict:
             "color": AXIS_COLOR,
             "gridcolor": GRID_COLOR,
             "zerolinecolor": GRID_COLOR,
+            # reserves margin space so tick labels never collide with the
+            # axis title
+            "automargin": True,
         },
         "yaxis": {
             "title": {"text": y_label, "font": {"color": FONT_COLOR}},
             "color": AXIS_COLOR,
             "gridcolor": GRID_COLOR,
             "zerolinecolor": GRID_COLOR,
+            "automargin": True,
         },
     }
+
+
+def _max_tick_label_length() -> int:
+    """Max displayed tick label length before truncation (0 disables).
+    Configurable via MAX_TICK_LABEL_LENGTH (default 24). Truncation only
+    affects the displayed tick text; the underlying data is untouched."""
+    raw = os.getenv("MAX_TICK_LABEL_LENGTH")
+    if raw is None or raw.strip() == "":
+        return DEFAULT_MAX_TICK_LABEL_LENGTH
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_MAX_TICK_LABEL_LENGTH
+
+
+def _truncate_tick_labels(plotly_traces: list[dict], layout: dict, limit: int) -> None:
+    """Shorten over-long categorical tick labels via tickvals/ticktext.
+
+    Only applies when the categorical axis is unambiguous: every bar/line
+    trace must show the same string categories in the same order.
+    Otherwise the data is left untouched.
+    """
+    if limit <= 0 or "xaxis" not in layout:
+        return
+
+    categorical = [
+        t for t in plotly_traces
+        if t.get("type") in ("bar", "scatter", "scattergl")
+        and t.get("x")
+        and all(isinstance(v, str) for v in t["x"])
+    ]
+    # scatter/line with mode markers/lines still render string x on a
+    # category axis; "line" traces use type scatter/scattergl already.
+    if not categorical:
+        return
+
+    first = list(categorical[0]["x"])
+    if any(list(t["x"]) != first for t in categorical[1:]):
+        return
+    if not any(len(v) > limit for v in first):
+        return
+
+    layout["xaxis"]["tickvals"] = list(range(len(first)))
+    layout["xaxis"]["ticktext"] = [
+        v[:limit] + "…" if len(v) > limit else v for v in first
+    ]
+
+    # plotly.js formats hover x-labels through the axis tick machinery,
+    # so the truncated ticktext would leak into tooltips. Explicit
+    # per-point hovertext + hovertemplate bypass tick formatting and
+    # keep the full value in the hover label.
+    for trace in categorical:
+        trace["hovertext"] = list(first)
+        trace["hovertemplate"] = "%{hovertext}<br>%{y}<extra></extra>"
 
 
 def _gl_trace_threshold() -> int:
@@ -269,6 +344,7 @@ def build_trace(
         color_index: int,
         y_index: int,
         columns: dict[str, list] | None = None,
+        field_labels: dict[str, str] | None = None,
     ) -> dict:
     """Build one Plotly trace dict.
 
@@ -364,7 +440,7 @@ def build_trace(
                 "size": 8, "color": z, "colorscale": "Viridis", "showscale": True,
                 "colorbar": {
                     "title": {
-                        "text": _to_axis_label(trace_spec.z_axis) if trace_spec.z_axis else "",
+                        "text": _axis_label(trace_spec.z_axis, field_labels) if trace_spec.z_axis else "",
                         "font": {"color": FONT_COLOR},
                     },
                     "tickfont": {"color": FONT_COLOR},
@@ -379,7 +455,7 @@ def build_trace(
     return trace
 
 
-def build_layout(title: str, trace_specs: list[TraceSpec]) -> dict:
+def build_layout(title: str, trace_specs: list[TraceSpec], field_labels: dict[str, str] | None = None) -> dict:
     layout = _dark_layout(title)
 
     has_geomap = any(t.chart_type == "geomap" for t in trace_specs)
@@ -388,7 +464,7 @@ def build_layout(title: str, trace_specs: list[TraceSpec]) -> dict:
     if not has_geomap and not has_pie:
         x_label = trace_specs[0].x_axis if trace_specs else ""
         y_label = trace_specs[0].y_axis if trace_specs else ""
-        layout.update(_dark_axes(_to_axis_label(x_label), _to_axis_label(y_label)))
+        layout.update(_dark_axes(_axis_label(x_label, field_labels), _axis_label(y_label, field_labels)))
 
     if has_geomap:
         layout["geo"] = {
@@ -408,9 +484,10 @@ def build_layout(title: str, trace_specs: list[TraceSpec]) -> dict:
     for i in range(1, len(trace_specs)):
         spec = trace_specs[i]
         layout[f"yaxis{i+1}"] = {
-            "title": {"text": spec.y_axis, "font": {"color": FONT_COLOR}},
+            "title": {"text": _axis_label(spec.y_axis, field_labels), "font": {"color": FONT_COLOR}},
             "side": "right", "overlaying": "y",
             "color": AXIS_COLOR, "gridcolor": GRID_COLOR, "zerolinecolor": GRID_COLOR,
+            "automargin": True,
         }
 
     return layout
@@ -423,6 +500,7 @@ def edit_chart(
         chart_type: str | None = None,
         traces: list[TraceSpec] | None = None,
         data_profile: DataProfile | dict | None = None,
+        field_labels: dict[str, str] | None = None,
     ) -> dict:
     """Rebuild an insight's Plotly spec with a modified chart type or traces.
 
@@ -442,6 +520,7 @@ def edit_chart(
         traces: Full trace override; takes precedence over ``chart_type``.
         data_profile: Mock-data recipe (``Insights.data_profile``) used to
             regenerate rows when ``rows`` is omitted.
+        field_labels: jsonPath→schema field name map for axis titles.
 
     Returns:
         A Plotly ``{data, layout}`` dict, like ``build_plotly_spec``.
@@ -467,15 +546,18 @@ def edit_chart(
         metadata=insight.metadata,
         chart_spec=ChartSpec(traces=traces),
     )
-    return build_plotly_spec(shell, rows)
+    return build_plotly_spec(shell, rows, field_labels=field_labels)
 
 
-def build_plotly_spec(insight: Insight, rows: list[dict]) -> dict:
+def build_plotly_spec(insight: Insight, rows: list[dict], field_labels: dict[str, str] | None = None) -> dict:
     """Build a full Plotly spec {data, layout} from an insight and data rows.
 
     Each unique field path across all traces is compiled and resolved once
     over all rows; traces (and their filters) index into the shared columns
-    instead of re-resolving the same paths per trace.
+    instead of re-resolving the same paths per trace or per filter pass.
+
+    ``field_labels`` maps jsonPaths to schema field names: axis titles use
+    them when available (the jsonPath tail is the fallback).
     """
     chart_spec = insight.chart_spec
     traces = chart_spec.traces
@@ -490,9 +572,10 @@ def build_plotly_spec(insight: Insight, rows: list[dict]) -> dict:
                 columns[path] = _resolve_column(rows, *_compiled_pair(path))
 
     plotly_traces = [
-        build_trace(t, rows, i, i+1, columns=columns)
+        build_trace(t, rows, i, i+1, columns=columns, field_labels=field_labels)
         for i, t in enumerate(traces)
     ]
-    layout = build_layout(title, traces)
+    layout = build_layout(title, traces, field_labels=field_labels)
+    _truncate_tick_labels(plotly_traces, layout, _max_tick_label_length())
 
     return {"data": plotly_traces, "layout": layout}

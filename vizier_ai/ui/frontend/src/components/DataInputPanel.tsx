@@ -6,12 +6,14 @@ import type { InsightConstraintsPayload } from '../domain/constraints'
 import type { ConstraintsState } from '../domain/constraints'
 import { EMPTY_CONSTRAINTS } from '../domain/constraints'
 import { buildCsvOptionsPayload, DEFAULT_CSV_OPTIONS, type CsvOptionsPayload, type CsvOptionsState } from '../domain/csv'
+import { buildExcelOptionsPayload, DEFAULT_EXCEL_OPTIONS, type ExcelOptionsPayload, type ExcelOptionsState } from '../domain/excel'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ConstraintsPanel } from './ConstraintsPanel'
 import { CsvOptionsSection } from './CsvOptionsSection'
+import { ExcelOptionsSection } from './ExcelOptionsSection'
 
 export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
-export type FileFormat = 'csv' | 'json' | 'jsonl'
+export type FileFormat = 'csv' | 'json' | 'jsonl' | 'excel'
 
 export interface RestApiConfig {
   method: string
@@ -36,6 +38,7 @@ export interface GenerateRequest {
   }
   constraints?: InsightConstraintsPayload
   csvOptions?: CsvOptionsPayload
+  excelOptions?: ExcelOptionsPayload
 }
 
 interface DataInputPanelProps {
@@ -53,6 +56,7 @@ interface DataInputPanelProps {
 const inferDataFormat = (filename: string): FileFormat => {
   const lower = filename.toLowerCase()
   if (lower.endsWith('.jsonl')) return 'jsonl'
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return 'excel'
   if (lower.endsWith('.json')) return 'json'
   return 'csv'
 }
@@ -79,6 +83,7 @@ export function DataInputPanel({
   const [bundleFile, setBundleFile] = useState<File | null>(null)
   const [bundleDataFile, setBundleDataFile] = useState<File | null>(null)
   const [csvOptions, setCsvOptions] = useState<CsvOptionsState>(DEFAULT_CSV_OPTIONS)
+  const [excelOptions, setExcelOptions] = useState<ExcelOptionsState>(DEFAULT_EXCEL_OPTIONS)
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -104,6 +109,7 @@ export function DataInputPanel({
     }
 
     setFile(uploadedFile)
+    setFileFormat(inferDataFormat(uploadedFile.name))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -121,6 +127,9 @@ export function DataInputPanel({
       },
       csvOptions: dataSourceMode === 'file' && fileFormat === 'csv'
         ? buildCsvOptionsPayload(csvOptions)
+        : undefined,
+      excelOptions: dataSourceMode === 'file' && fileFormat === 'excel'
+        ? buildExcelOptionsPayload(excelOptions)
         : undefined
     })
   }
@@ -178,7 +187,7 @@ export function DataInputPanel({
                     placeholder="Choose file"
                     value={file}
                     onChange={handleFileUpload}
-                    accept=".csv,.json,.jsonl,.txt"
+                    accept=".csv,.json,.jsonl,.xlsx,.xls,.txt"
                     style={{ flex: 1 }}
                   />
                   <Select
@@ -186,7 +195,8 @@ export function DataInputPanel({
                     data={[
                       { value: 'csv', label: 'CSV' },
                       { value: 'json', label: 'JSON array' },
-                      { value: 'jsonl', label: 'JSONL' }
+                      { value: 'jsonl', label: 'JSONL' },
+                      { value: 'excel', label: 'Excel' }
                     ]}
                     value={fileFormat}
                     onChange={(value) => setFileFormat((value as FileFormat) ?? 'csv')}
@@ -211,6 +221,9 @@ export function DataInputPanel({
                 </Text>
                 {fileFormat === 'csv' ? (
                   <CsvOptionsSection value={csvOptions} onChange={setCsvOptions} disabled={isGenerating} />
+                ) : null}
+                {fileFormat === 'excel' ? (
+                  <ExcelOptionsSection value={excelOptions} onChange={setExcelOptions} disabled={isGenerating} />
                 ) : null}
               </Stack>
             ) : null}
@@ -305,7 +318,7 @@ export function DataInputPanel({
                       placeholder="Choose file"
                       value={bundleDataFile}
                       onChange={setBundleDataFile}
-                      accept=".csv,.json,.jsonl,.txt"
+                      accept=".csv,.json,.jsonl,.xlsx,.xls,.txt"
                       disabled={isImporting}
                       size="sm"
                       variant="unstyled"

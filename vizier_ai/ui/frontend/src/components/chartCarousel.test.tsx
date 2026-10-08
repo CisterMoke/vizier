@@ -32,7 +32,6 @@ const insights: InsightCandidate[] = [
     metadata: {
       title: 'Revenue by category',
       summary: 'Show revenue by category as a bar chart.',
-      keyIdea: 'Revenue varies by category.',
       description: null,
     },
     chart_spec: {
@@ -46,7 +45,6 @@ const insights: InsightCandidate[] = [
     metadata: {
       title: 'Order volume trend',
       summary: 'Weekly order count over time.',
-      keyIdea: 'Order volume shows seasonal patterns.',
       description: null,
     },
     chart_spec: {
@@ -56,6 +54,15 @@ const insights: InsightCandidate[] = [
     }
   }
 ]
+
+const SCHEMA = {
+  source: 'orders',
+  fields: [
+    { name: 'Category', jsonPath: '$.category', type: 'string' },
+    { name: 'Revenue', jsonPath: '$.revenue', type: 'number' },
+    { name: 'Week', jsonPath: '$.week', type: 'string' },
+  ],
+}
 
 const renderCarousel = (props: any) =>
   render(
@@ -190,7 +197,6 @@ const staticInsight: InsightCandidate = {
   metadata: {
     title: 'Huge scatter',
     summary: 'Too many points for interactive rendering.',
-    keyIdea: 'Server renders this chart instead.',
     description: null,
   },
   chart_spec: {
@@ -230,4 +236,141 @@ it('shows a server-rendered svg after editing a static chart', async () => {
   const img = await screen.findByRole('img', { name: /huge scatter/i })
   expect(img.getAttribute('src') ?? '').toMatch(/^data:image\/svg\+xml/)
   expect(screen.getByRole('button', { name: /undo chart edit/i })).toBeInTheDocument()
+})
+
+describe('field editor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('opens the field editor with axis and aggregation controls', () => {
+    renderCarousel({ insights, sessionId: 'test-session', onDelete: vi.fn(), schema: SCHEMA })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+
+    expect(screen.getByLabelText(/x axis/i, { selector: 'input' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/y axis/i, { selector: 'input' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/aggregation/i, { selector: 'input' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/filter/i)).toBeInTheDocument()
+  })
+
+  it('hides the editor when no schema is available', () => {
+    renderCarousel({ insights, sessionId: 'test-session', onDelete: vi.fn() })
+
+    expect(screen.queryByRole('button', { name: /edit fields/i })).not.toBeInTheDocument()
+  })
+
+  it('lists only numeric fields for the y axis plus the current field', () => {
+    renderCarousel({ insights, sessionId: 'test-session', onDelete: vi.fn(), schema: SCHEMA })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+    fireEvent.click(screen.getByLabelText(/y axis/i, { selector: 'input' }))
+
+    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    expect(options).toContain('Revenue')
+    expect(options).not.toContain('Category')
+    expect(options).not.toContain('Week')
+  })
+
+  it('rebuilds the chart with a substituted x axis', async () => {
+    const { editChart } = await import('../services/apiClient')
+    renderCarousel({ insights, sessionId: 'test-session', onDelete: vi.fn(), schema: SCHEMA })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+    fireEvent.click(screen.getByLabelText(/x axis/i, { selector: 'input' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Week' }))
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(1))
+    const traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(traces[0].x_axis).toBe('$.week')
+    expect(traces[0].y_axis).toBe('$.revenue')
+  })
+
+  it('clearing aggregation sends null', async () => {
+    const { editChart } = await import('../services/apiClient')
+    const withAgg: InsightCandidate[] = [{
+      id: 'ins-agg',
+      metadata: { title: 'Agg', summary: 'S', description: null },
+      chart_spec: {
+        traces: [{ chart_type: 'bar', x_axis: '$.category', y_axis: '$.revenue', aggregation: 'sum' }],
+        plotlyData: [],
+        plotlyLayout: {},
+      },
+    }]
+
+    renderCarousel({ insights: withAgg, sessionId: 'test-session', onDelete: vi.fn(), schema: SCHEMA })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+    fireEvent.click(screen.getByLabelText(/aggregation/i, { selector: 'input' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'None' }))
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(1))
+    const traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(traces[0].aggregation).toBeNull()
+  })
+
+  it('enabling a filter sends field, op, and value; disabling removes it', async () => {
+    const { editChart } = await import('../services/apiClient')
+    renderCarousel({ insights, sessionId: 'test-session', onDelete: vi.fn(), schema: SCHEMA })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+    fireEvent.click(screen.getByLabelText(/filter/i))
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(1))
+    let traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(traces[0].filter).toEqual({ field: '$.category', op: 'eq', value: '' })
+
+    fireEvent.input(screen.getByLabelText(/value/i), { target: { value: 'EMEA' } })
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(2))
+    traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[1][1]
+    expect(traces[0].filter).toEqual({ field: '$.category', op: 'eq', value: 'EMEA' })
+
+    fireEvent.click(screen.getByLabelText(/filter/i))
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(3))
+    traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[2][1]
+    expect(traces[0].filter).toBeNull()
+  })
+
+  it('edits fields per trace for multi-trace insights', async () => {
+    const { editChart } = await import('../services/apiClient')
+    const multiTrace: InsightCandidate[] = [{
+      id: 'ins-multi',
+      metadata: { title: 'Overlay', summary: 'S', description: null },
+      chart_spec: {
+        traces: [
+          { chart_type: 'bar', x_axis: '$.category', y_axis: '$.revenue' },
+          { chart_type: 'line', x_axis: '$.week', y_axis: '$.orders' },
+        ],
+        plotlyData: [],
+        plotlyLayout: {},
+      },
+    }]
+    const multiSchema = {
+      source: 'orders',
+      fields: [
+        { name: 'Category', jsonPath: '$.category', type: 'string' },
+        { name: 'Week', jsonPath: '$.week', type: 'string' },
+        { name: 'Revenue', jsonPath: '$.revenue', type: 'number' },
+        { name: 'Orders', jsonPath: '$.orders', type: 'number' },
+      ],
+    }
+
+    renderCarousel({ insights: multiTrace, sessionId: 'test-session', onDelete: vi.fn(), schema: multiSchema })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit fields/i }))
+    fireEvent.click(screen.getByText('Trace 2'))
+
+    const ySelect = screen.getAllByLabelText(/y axis/i, { selector: 'input' })[0]
+    fireEvent.click(ySelect)
+    fireEvent.click(await screen.findByRole('option', { name: 'Revenue' }))
+
+    await waitFor(() => expect(editChart).toHaveBeenCalledTimes(1))
+    const traces = (editChart as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    // the edit targeted the Orders trace: its y changed from $.orders to $.revenue
+    expect(traces[1].y_axis).toBe('$.revenue')
+    // the Revenue trace keeps its own field
+    expect(traces[0].y_axis).toBe('$.revenue')
+  })
 })

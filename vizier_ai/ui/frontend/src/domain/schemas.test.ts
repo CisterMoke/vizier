@@ -8,7 +8,6 @@ it('parses an insight with metadata and chart_spec', () => {
         metadata: {
           title: 'EV Count by County',
           summary: 'Bar chart showing EV count',
-          keyIdea: 'Urban counties have more EVs',
         },
         chart_spec: {
           traces: [],
@@ -33,7 +32,6 @@ it('defaults missing optional fields', () => {
         metadata: {
           title: 'Simple chart',
           summary: 'A simple chart',
-          keyIdea: 'Test defaults',
         },
         chart_spec: {
           traces: [],
@@ -52,7 +50,7 @@ it('parses the mock seed when present', () => {
     insights: [
       {
         id: 'ins-3',
-        metadata: { title: 'T', summary: 'S', keyIdea: 'K' },
+        metadata: { title: 'T', summary: 'S' },
         chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} },
         mock_seed: 1338
       }
@@ -67,7 +65,7 @@ it('parses insights without a mock seed', () => {
     insights: [
       {
         id: 'ins-4',
-        metadata: { title: 'T', summary: 'S', keyIdea: 'K' },
+        metadata: { title: 'T', summary: 'S' },
         chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} }
       }
     ]

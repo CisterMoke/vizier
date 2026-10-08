@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.csv_options import CsvOptions
+from vizier_ai.models.excel_options import ExcelOptions
 from vizier_ai.models.insights import Insights, TraceSpec
 
 
@@ -34,5 +35,9 @@ class InsightsResponse(Insights):
     csv_options: CsvOptions | None = Field(
         default=None,
         description="Parsing options used for the CSV upload, echoed so clients can persist them in a saved bundle.",
+    )
+    excel_options: ExcelOptions | None = Field(
+        default=None,
+        description="Parsing options used for the Excel upload, echoed so clients can persist them in a saved bundle.",
     )
     warnings: list[str] | None = None

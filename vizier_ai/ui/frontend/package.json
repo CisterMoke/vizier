@@ -18,6 +18,7 @@
     "@ai-sdk/mistral": "^4.0.29",
     "@mantine/core": "^9.6.2",
     "@mantine/hooks": "^9.6.2",
+    "@mantine/notifications": "^9.6.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/user-event": "^14.6.5",
     "ai": "^7.0.68",

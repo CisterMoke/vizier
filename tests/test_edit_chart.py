@@ -16,7 +16,7 @@ from vizier_ai.models.insights import ChartSpec, Insight, InsightMetadata, Trace
 def make_insight() -> Insight:
     return Insight(
         id="rev-by-region",
-        metadata=InsightMetadata(title="Revenue by region", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="Revenue by region", summary="S"),
         chart_spec=ChartSpec(traces=[
             TraceSpec(chart_type="bar", x_axis="$['region']", y_axis="$['revenue']", aggregation="sum"),
         ]),
@@ -68,6 +68,17 @@ class TestEditChart:
 
         assert spec["data"][0]["type"] == "bar"
         assert spec["data"][0]["x"] == ["APAC", "EMEA"]
+
+    def test_field_labels_become_axis_titles(self):
+        spec = edit_chart(
+            make_insight(),
+            ROWS,
+            chart_type="line",
+            field_labels={"$['region']": "Region", "$['revenue']": "Revenue"},
+        )
+
+        assert spec["layout"]["xaxis"]["title"]["text"] == "Region"
+        assert spec["layout"]["yaxis"]["title"]["text"] == "Revenue"
 
     def test_repeated_edits_start_from_original_recipe(self):
         insight = make_insight()

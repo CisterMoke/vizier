@@ -3,6 +3,7 @@ import { parseInsights } from '../domain/schemas'
 import type { BundleContext } from '../domain/bundle'
 import type { InsightConstraintsPayload } from '../domain/constraints'
 import type { CsvOptionsPayload } from '../domain/csv'
+import type { ExcelOptionsPayload } from '../domain/excel'
 import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
@@ -10,12 +11,21 @@ export interface GenerateResponse {
   insights: InsightCandidate[]
   context: BundleContext | null
   csvOptions?: CsvOptionsPayload | null
+  excelOptions?: ExcelOptionsPayload | null
 }
 
 export interface ServerConfig {
   maxFileSize: number
   maxRows: number | null
 }
+
+export type GenerationEvent =
+  | { type: 'prepare'; rowCount: number }
+  | { type: 'schema'; fieldCount: number; warnings: string[] }
+  | { type: 'insights'; count: number }
+  | { type: 'chart'; index: number; total: number; insightId: string; title: string }
+
+export type ProgressHandler = (event: GenerationEvent) => void
 
 const DEFAULT_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000'
 
@@ -47,23 +57,93 @@ export const fetchConfig = async (backendUrl?: string): Promise<ServerConfig> =>
   }
 }
 
-async function parseResponse(response: Response): Promise<GenerateResponse> {
-  const raw = await response.json()
-
+function buildGenerateResponse(raw: Record<string, unknown>): GenerateResponse {
   const parsed = parseInsights(raw)
 
   return {
-    sessionId: raw.sessionId ?? '',
+    sessionId: (raw.sessionId as string) ?? '',
     insights: parsed.insights,
     context: {
-      schema: raw.dataset_schema ?? null,
-      dataProfile: raw.data_profile ?? null
+      schema: (raw.dataset_schema as BundleContext['schema']) ?? null,
+      dataProfile: (raw.data_profile as BundleContext['dataProfile']) ?? null
     },
-    csvOptions: raw.csv_options ?? null
+    csvOptions: (raw.csv_options as CsvOptionsPayload) ?? null,
+    excelOptions: (raw.excel_options as ExcelOptionsPayload) ?? null
   }
 }
 
-export const callGenerate = async (request: GenerateRequest, backendUrl?: string): Promise<GenerateResponse> => {
+async function parseResponse(response: Response): Promise<GenerateResponse> {
+  return buildGenerateResponse(await response.json())
+}
+
+/**
+ * Read an NDJSON generation stream: progress events are handed to
+ * onProgress as they arrive; the final complete event becomes the
+ * response payload. Falls back to buffered reading when the environment
+ * exposes no response body stream.
+ */
+async function readGenerationStream(
+  response: Response,
+  onProgress?: ProgressHandler
+): Promise<GenerateResponse> {
+  const processLine = (line: string): Record<string, unknown> | null => {
+    const event = JSON.parse(line) as { type: string; payload?: unknown; detail?: unknown }
+    if (event.type === 'complete') {
+      return event.payload as Record<string, unknown>
+    }
+    if (event.type === 'error') {
+      throw new Error(
+        typeof event.detail === 'string' ? event.detail : 'Generation failed.'
+      )
+    }
+    onProgress?.(event as GenerationEvent)
+    return null
+  }
+
+  const processBuffer = (chunk: string): Record<string, unknown> | null => {
+    let payload: Record<string, unknown> | null = null
+    for (const line of chunk.split('\n')) {
+      if (!line.trim()) continue
+      const result = processLine(line)
+      if (result) payload = result
+    }
+    return payload
+  }
+
+  let payload: Record<string, unknown> | null = null
+
+  if (response.body) {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      const chunkPayload = processBuffer(lines.join('\n'))
+      if (chunkPayload) payload = chunkPayload
+    }
+    if (buffer.trim()) {
+      const tailPayload = processBuffer(buffer)
+      if (tailPayload) payload = tailPayload
+    }
+  } else {
+    payload = processBuffer(await response.text())
+  }
+
+  if (!payload) {
+    throw new Error('The generation stream ended without a result.')
+  }
+  return buildGenerateResponse(payload)
+}
+
+export const callGenerate = async (
+  request: GenerateRequest,
+  onProgress?: ProgressHandler,
+  backendUrl?: string
+): Promise<GenerateResponse> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
 
   if (request.dataSource.mode === 'file' && request.dataSource.file) {
@@ -77,6 +157,9 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     if (request.csvOptions) {
       formData.append('csvOptions', JSON.stringify(request.csvOptions))
     }
+    if (request.excelOptions) {
+      formData.append('excelOptions', JSON.stringify(request.excelOptions))
+    }
 
     const response = await fetch(`${baseUrl}/api/generate-upload`, {
       method: 'POST',
@@ -87,7 +170,7 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
       throw new Error(extractErrorMessage(response.status, await response.text()))
     }
 
-    return parseResponse(response)
+    return readGenerationStream(response, onProgress)
   }
 
   const response = await fetch(`${baseUrl}/api/generate`, {
@@ -110,12 +193,13 @@ export const callGenerate = async (request: GenerateRequest, backendUrl?: string
     throw new Error(extractErrorMessage(response.status, await response.text()))
   }
 
-  return parseResponse(response)
+  return readGenerationStream(response, onProgress)
 }
 
 export const regenerate = async (
   sessionId: string,
   constraints?: InsightConstraintsPayload,
+  onProgress?: ProgressHandler,
   backendUrl?: string
 ): Promise<GenerateResponse> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
@@ -130,7 +214,7 @@ export const regenerate = async (
     throw new Error(extractErrorMessage(response.status, await response.text()))
   }
 
-  return parseResponse(response)
+  return readGenerationStream(response, onProgress)
 }
 
 export const loadBundle = async (
@@ -138,6 +222,7 @@ export const loadBundle = async (
   data?: File,
   dataFormat: string = 'csv',
   csvOptions?: CsvOptionsPayload,
+  excelOptions?: ExcelOptionsPayload,
   backendUrl?: string
 ): Promise<GenerateResponse> => {
   const baseUrl = backendUrl ?? DEFAULT_BACKEND_URL
@@ -150,6 +235,9 @@ export const loadBundle = async (
   }
   if (csvOptions) {
     formData.append('csvOptions', JSON.stringify(csvOptions))
+  }
+  if (excelOptions) {
+    formData.append('excelOptions', JSON.stringify(excelOptions))
   }
 
   const response = await fetch(`${baseUrl}/api/load-bundle`, {

@@ -7,7 +7,6 @@ const mockInsight: InsightCandidate = {
   metadata: {
     title: 'Revenue trend',
     summary: 'Weekly revenue over time.',
-    keyIdea: 'Revenue increases over time.',
     description: null,
   },
   chartSpec: {

@@ -1,7 +1,6 @@
 export interface InsightMetadata {
   title: string
   summary: string
-  keyIdea: string
   description?: string | null
 }
 
@@ -20,6 +19,18 @@ export interface TraceSpec {
   aggregation?: string | null
   filter?: { field: string; op: string; value: unknown } | null
   name?: string | null
+}
+
+export interface DatasetSchemaField {
+  name: string
+  jsonPath: string
+  type: string
+  semanticType?: string | null
+}
+
+export interface DatasetSchema {
+  source: string
+  fields: DatasetSchemaField[]
 }
 
 export interface InsightCandidate {

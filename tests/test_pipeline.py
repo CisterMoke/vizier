@@ -61,7 +61,7 @@ def make_profile() -> DataProfile:
 def make_candidate() -> InsightCandidate:
     return InsightCandidate(
         id="rev-by-region",
-        metadata=InsightMetadata(title="Revenue by region", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="Revenue by region", summary="S"),
         traces=[TraceSpec(chart_type="bar", x_axis="$['region']", y_axis="$['region']", aggregation="count")],
     )
 

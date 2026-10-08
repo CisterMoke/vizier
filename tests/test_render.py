@@ -13,7 +13,7 @@ from vizier_ai.models.insights import ChartSpec, Insight, InsightMetadata, Trace
 def make_insight(insight_id="rev-by-region") -> Insight:
     return Insight(
         id=insight_id,
-        metadata=InsightMetadata(title="Revenue by region", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="Revenue by region", summary="S"),
         chart_spec=ChartSpec(
             traces=[TraceSpec(chart_type="bar", x_axis="$['region']", y_axis="$['revenue']", aggregation="sum")],
             plotlyData=[{"type": "bar", "x": ["EMEA"], "y": [10], "name": "Revenue"}],
@@ -37,7 +37,7 @@ class TestInsightFigure:
     def test_figure_handles_insight_without_rendered_spec(self):
         insight = Insight(
             id="raw",
-            metadata=InsightMetadata(title="t", summary="s", keyIdea="k"),
+            metadata=InsightMetadata(title="t", summary="s"),
             chart_spec=ChartSpec(traces=[TraceSpec(chart_type="bar", x_axis="$.a", y_axis="$.b")]),
         )
         fig = insight.figure()

@@ -14,7 +14,15 @@ from vizier_ai.models.bundle import InsightBundle, SavedInsight
 from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.data_profile import DataColumnSpec, DataProfile
 from vizier_ai.models.data_schema import DatasetField, DatasetSchema
-from vizier_ai.models.insights import ChartSpec, Insights, Insight, InsightMetadata, TraceSpec
+from vizier_ai.models.insights import (
+    ChartSpec,
+    Insight,
+    InsightCandidate,
+    InsightCandidates,
+    InsightMetadata,
+    Insights,
+    TraceSpec,
+)
 from vizier_ai.ui.models.api import GenerateRequest, RegenerateRequest
 
 
@@ -66,18 +74,46 @@ def make_insights_result() -> Insights:
     return Insights(insights=[])
 
 
+def patch_vizier(monkeypatch, result=None, error=None):
+    """Replace app.Vizier with a fake; returns the call log."""
+    from vizier_ai.ui import app as app_module
+
+    calls = []
+
+    class FakeVizier:
+        def __init__(self, *, constraints=None, **kwargs):
+            self._constraints = constraints
+
+        async def run(self, schema_text, *, data=None, **kwargs):
+            calls.append({
+                "schema_text": schema_text,
+                "real_data": data,
+                "constraints": self._constraints,
+            })
+            if error is not None:
+                raise error
+            return result if result is not None else make_insights_result()
+
+    monkeypatch.setattr(app_module, "Vizier", FakeVizier)
+    return calls
+
+
+def stream_events(response):
+    """Parse an NDJSON streaming response into its events."""
+    return [json.loads(line) for line in response.text.strip().splitlines() if line.strip()]
+
+
+def complete_payload(response):
+    events = stream_events(response)
+    assert events[-1]["type"] == "complete", events
+    return events[-1]["payload"]
+
+
 @pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
 class TestConstraintsEndpoints:
     @pytest.fixture
     def captured(self, monkeypatch):
-        calls = []
-
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            calls.append({"schema_text": schema_text, "real_data": real_data, "constraints": constraints})
-            return make_insights_result()
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
-        return calls
+        return patch_vizier(monkeypatch)
 
     @pytest.fixture
     def client(self, captured):
@@ -130,13 +166,13 @@ class TestConstraintsEndpoints:
         assert response.status_code == 200
         assert captured[0]["constraints"] == InsightConstraints(exclude_chart_types=["pie"])
 
-    def test_unsatisfiable_constraints_map_to_422(self, client, captured, monkeypatch):
+    def test_unsatisfiable_constraints_stream_error_event(self, client, captured, monkeypatch):
         from vizier_ai.core import UnsatisfiableConstraintsError
 
-        async def failing_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            raise UnsatisfiableConstraintsError("No geographic fields in the schema")
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", failing_pipeline)
+        patch_vizier(
+            monkeypatch,
+            error=UnsatisfiableConstraintsError("No geographic fields in the schema"),
+        )
 
         response = client.post("/api/generate", json={
             "schemaText": "orders",
@@ -144,8 +180,10 @@ class TestConstraintsEndpoints:
             "constraints": {"include_chart_types": ["geomap"]},
         })
 
-        assert response.status_code == 422
-        assert "No geographic fields" in response.json()["detail"]
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+        events = stream_events(response)
+        assert events[-1] == {"type": "error", "detail": "No geographic fields in the schema"}
 
 
 def make_bundle_json(mock: bool) -> str:
@@ -159,7 +197,7 @@ def make_bundle_json(mock: bool) -> str:
         ]) if mock else None,
         insights=[SavedInsight(
             id="i1",
-            metadata=InsightMetadata(title="Counties", summary="S", keyIdea="K"),
+            metadata=InsightMetadata(title="Counties", summary="S"),
             traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.county")],
             mock_seed=1337 if mock else None,
         )],
@@ -239,14 +277,7 @@ class TestLoadBundleEndpoint:
 class TestCsvOptionsEndpoints:
     @pytest.fixture
     def captured(self, monkeypatch):
-        calls = []
-
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            calls.append({"schema_text": schema_text, "real_data": real_data})
-            return Insights(insights=[])
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
-        return calls
+        return patch_vizier(monkeypatch)
 
     @pytest.fixture
     def client(self, captured):
@@ -274,7 +305,7 @@ class TestCsvOptionsEndpoints:
         assert real_data["columns"] == ["county", "total"]
         assert real_data["rowCount"] == 2
         # The options are echoed back so the client can persist them in a bundle
-        assert response.json()["csv_options"]["delimiter"] == ";"
+        assert complete_payload(response)["csv_options"]["delimiter"] == ";"
 
     def test_load_bundle_uses_csv_options_saved_in_bundle(self, client):
         bundle = json.loads(make_bundle_json(mock=False))
@@ -379,7 +410,7 @@ def make_large_insights_result(point_count: int = 10) -> Insights:
     points = list(range(point_count))
     insight = Insight(
         id="ins-1",
-        metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="T", summary="S"),
         chart_spec=ChartSpec(
             traces=[TraceSpec(chart_type="bar", x_axis="$.x", y_axis="$.y")],
             plotlyData=[{"type": "bar", "x": points, "y": points}],
@@ -408,10 +439,7 @@ class TestSessionInsights:
         return TestClient(app)
 
     def upload_csv(self, client, monkeypatch, result):
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            return result
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        patch_vizier(monkeypatch, result=result)
 
         return client.post(
             "/api/generate-upload",
@@ -421,7 +449,7 @@ class TestSessionInsights:
 
     def test_session_stores_recipe_only_insights(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-        session_id = response.json()["sessionId"]
+        session_id = complete_payload(response)["sessionId"]
 
         from vizier_ai.ui.sessions import _get_session
 
@@ -431,7 +459,7 @@ class TestSessionInsights:
 
     def test_svg_endpoint_renders_insight(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-        body = response.json()
+        body = complete_payload(response)
 
         svg = client.get(
             f"/api/session/{body['sessionId']}/insight/ins-1/svg"
@@ -447,19 +475,16 @@ class TestSessionInsights:
 
     def test_svg_endpoint_unknown_insight(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-        session_id = response.json()["sessionId"]
+        session_id = complete_payload(response)["sessionId"]
 
         assert client.get(
             f"/api/session/{session_id}/insight/nope/svg"
         ).status_code == 404
 
     def test_svg_endpoint_requires_session_rows(self, client, monkeypatch):
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            return make_large_insights_result()
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        patch_vizier(monkeypatch, result=make_large_insights_result())
         response = client.post("/api/generate", json={"schemaText": "numbers"})
-        session_id = response.json()["sessionId"]
+        session_id = complete_payload(response)["sessionId"]
 
         assert client.get(
             f"/api/session/{session_id}/insight/ins-1/svg"
@@ -467,18 +492,163 @@ class TestSessionInsights:
 
     def test_regenerate_updates_stored_insights(self, client, monkeypatch):
         response = self.upload_csv(client, monkeypatch, make_large_insights_result())
-        session_id = response.json()["sessionId"]
+        session_id = complete_payload(response)["sessionId"]
 
-        async def fake_pipeline(schema_text, real_data=None, *, constraints=None, **kwargs):
-            return make_large_insights_result(point_count=3)
-
-        monkeypatch.setattr("vizier_ai.ui.app.run_pipeline", fake_pipeline)
+        patch_vizier(monkeypatch, result=make_large_insights_result(point_count=3))
         client.post("/api/regenerate", json={"sessionId": session_id})
 
         from vizier_ai.ui.sessions import _get_session
 
         stored = _get_session(session_id)["insights"]
         assert stored[0].chart_spec.plotlyData is None
+
+
+class FakeProgressLLM:
+    """Canned LLM for exercising the real Vizier pipeline through the API."""
+
+    def __init__(self, schema=None):
+        self.schema = schema
+
+    async def __call__(self, system, prompt, output_type, *, model=None, api_key=None):
+        if output_type is DatasetSchema:
+            return self.schema or DatasetSchema(
+                source="numbers",
+                fields=[
+                    DatasetField(name="X", jsonPath="$['x']", type="number"),
+                    DatasetField(name="Y", jsonPath="$['y']", type="number"),
+                ],
+            )
+        if output_type is DataProfile:
+            return DataProfile(columns=[
+                DataColumnSpec(name="$.x", generator="uniform", min=0, max=10),
+                DataColumnSpec(name="$.y", generator="uniform", min=0, max=10),
+            ])
+        return InsightCandidates(candidates=[
+            InsightCandidate(
+                id="chart-1",
+                metadata=InsightMetadata(title="Y by X", summary="S"),
+                traces=[TraceSpec(chart_type="bar", x_axis="$['x']", y_axis="$['y']")],
+            ),
+        ])
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestGenerationProgressEvents:
+    """The generation endpoints pipe the Vizier hook events to the client
+    as an NDJSON stream, ending in a complete (or error) event."""
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from vizier_ai import core as core_module
+        from vizier_ai.ui.app import app
+
+        monkeypatch.setattr(core_module, "call_llm", FakeProgressLLM())
+        return TestClient(app)
+
+    def test_generate_upload_streams_progress_events(self, client):
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
+            data={"schemaText": "numbers", "fileFormat": "csv"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+
+        events = stream_events(response)
+        assert [e["type"] for e in events] == ["prepare", "schema", "insights", "chart", "complete"]
+
+        # the prepare event fires once the upload is parsed, before the
+        # pipeline starts — it marks data preparation as its own (quick) step
+        assert events[0] == {"type": "prepare", "rowCount": 2}
+
+        schema_event = events[1]
+        assert schema_event["fieldCount"] == 2
+        assert schema_event["warnings"] == []
+        assert events[2] == {"type": "insights", "count": 1}
+        chart_event = events[3]
+        assert chart_event["index"] == 0
+        assert chart_event["total"] == 1
+        assert chart_event["insightId"] == "chart-1"
+        assert chart_event["title"] == "Y by X"
+
+        payload = events[4]["payload"]
+        assert payload["sessionId"]
+        trace = payload["insights"][0]["chart_spec"]["plotlyData"][0]
+        assert trace["x"] == [1, 3]
+
+    def test_schema_validation_warnings_reach_schema_event(self, client, monkeypatch):
+        from vizier_ai import core as core_module
+
+        monkeypatch.setattr(core_module, "call_llm", FakeProgressLLM(schema=DatasetSchema(
+            source="numbers",
+            fields=[
+                DatasetField(name="X", jsonPath="$['x']", type="number"),
+                DatasetField(name="Ghost", jsonPath="$['missing_column']", type="number"),
+            ],
+        )))
+
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
+            data={"schemaText": "numbers", "fileFormat": "csv"},
+        )
+
+        schema_event = stream_events(response)[1]
+        assert any("Ghost" in warning for warning in schema_event["warnings"])
+
+    def test_pipeline_error_streams_error_event(self, client, monkeypatch):
+        from vizier_ai import core as core_module
+
+        async def failing_llm(*args, **kwargs):
+            raise RuntimeError("LLM is down")
+
+        monkeypatch.setattr(core_module, "call_llm", failing_llm)
+
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
+            data={"schemaText": "numbers", "fileFormat": "csv"},
+        )
+
+        assert response.status_code == 200
+        events = stream_events(response)
+        assert events[-1] == {"type": "error", "detail": "LLM is down"}
+
+    def test_edit_chart_uses_session_schema_for_axis_labels(self, client):
+        upload = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.csv", b"x,y\n1,2\n3,4", "text/csv")},
+            data={"schemaText": "numbers", "fileFormat": "csv"},
+        )
+        session_id = complete_payload(upload)["sessionId"]
+
+        from vizier_ai.ui.sessions import _get_session
+        from vizier_ai.models.data_schema import DatasetSchema
+
+        stored = _get_session(session_id)["dataset_schema"]
+        assert isinstance(stored, DatasetSchema)
+        assert stored.fields[0].name == "X"
+
+        response = client.post("/api/edit-chart", json={
+            "sessionId": session_id,
+            "traces": [{"chart_type": "bar", "x_axis": "$['x']", "y_axis": "$['y']"}],
+        })
+
+        assert response.status_code == 200
+        assert response.json()["plotlyLayout"]["xaxis"]["title"]["text"] == "X"
+
+    def test_generate_streams_events_for_text_only(self, client):
+        response = client.post("/api/generate", json={"schemaText": "numbers"})
+
+        events = stream_events(response)
+        assert [e["type"] for e in events] == ["prepare", "schema", "insights", "chart", "complete"]
+        assert events[0] == {"type": "prepare", "rowCount": 0}
+        payload = events[-1]["payload"]
+        # mock path: charts render from the generated data profile
+        assert len(payload["insights"][0]["chart_spec"]["plotlyData"][0]["x"]) == 200
 
 
 @pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
@@ -511,3 +681,89 @@ class TestRateLimitExemptions:
 
         response = tight_client.get("/api/session/s/insight/i/svg")
         assert response.status_code == 429
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestExcelEndpoints:
+    """Excel uploads accept parsing options (sheet, header, skip rows) and
+    echo them so the client can persist them in a bundle."""
+
+    @pytest.fixture
+    def captured(self, monkeypatch):
+        return patch_vizier(monkeypatch)
+
+    @pytest.fixture
+    def client(self, captured):
+        from fastapi.testclient import TestClient
+
+        from vizier_ai.ui.app import app
+
+        return TestClient(app)
+
+    @staticmethod
+    def make_xlsx_bytes():
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.remove(wb.active)
+        data = wb.create_sheet("Data")
+        data.append(["county", "count"])
+        data.append(["King", 5])
+        wb.create_sheet("Notes")
+        import io
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        return buffer.getvalue()
+
+    def test_generate_upload_parses_excel_with_options(self, client, captured):
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.xlsx", self.make_xlsx_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={
+                "schemaText": "counties",
+                "fileFormat": "excel",
+                "excelOptions": '{"sheet_name": "Data"}',
+            },
+        )
+
+        assert response.status_code == 200
+        real_data = captured[0]["real_data"]
+        assert real_data["format"] == "excel"
+        assert real_data["columns"] == ["county", "count"]
+        assert real_data["rowCount"] == 1
+        # options are echoed back so the client can persist them in a bundle
+        assert complete_payload(response)["excel_options"]["sheet_name"] == "Data"
+
+    def test_generate_upload_rejects_invalid_excel_options(self, client):
+        response = client.post(
+            "/api/generate-upload",
+            files={"file": ("data.xlsx", self.make_xlsx_bytes(), "application/octet-stream")},
+            data={
+                "schemaText": "counties",
+                "fileFormat": "excel",
+                "excelOptions": '{"skip_rows": -3}',
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Invalid Excel options" in response.json()["detail"]
+
+    def test_load_bundle_applies_saved_excel_options(self, client):
+        bundle = json.loads(make_bundle_json(mock=False))
+        bundle["excel_options"] = {"sheet_name": "Data"}
+
+        response = client.post(
+            "/api/load-bundle",
+            files={
+                "bundle": ("bundle.json", json.dumps(bundle).encode(), "application/json"),
+                "data": ("data.xlsx", self.make_xlsx_bytes(), "application/octet-stream"),
+            },
+            data={"dataFormat": "excel"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        trace = payload["insights"][0]["chart_spec"]["plotlyData"][0]
+        assert trace["x"] == ["King"]
+        assert payload["excel_options"]["sheet_name"] == "Data"

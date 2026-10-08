@@ -16,7 +16,7 @@ export default defineConfig({
     },
     server: {
       deps: {
-        inline: ['@mantine/core', '@mantine/hooks', '@floating-ui/react', 'react-remove-scroll']
+        inline: ['@mantine/core', '@mantine/hooks', '@mantine/notifications', '@floating-ui/react', 'react-remove-scroll']
       }
     }
   }

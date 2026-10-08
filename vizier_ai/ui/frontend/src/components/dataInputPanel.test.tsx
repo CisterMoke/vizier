@@ -167,3 +167,35 @@ it('shows the regenerate button next to generate analytics when insights exist',
   fireEvent.click(regenerate)
   expect(onRegenerate).toHaveBeenCalledTimes(1)
 })
+
+it('infers excel format and sends excel options with the generate request', async () => {
+  const onGenerate = vi.fn().mockResolvedValue(undefined)
+  renderWithMantine(<DataInputPanel onGenerate={onGenerate} isGenerating={false} />)
+
+  const sourceSelect = screen.getByLabelText(/real data source/i, { selector: 'input' })
+  fireEvent.click(sourceSelect)
+  fireEvent.click(await screen.findByRole('option', { name: /file upload/i }))
+
+  const input = document.querySelector('input[type="file"]') as HTMLElement
+  const xlsx = new File(['binary'], 'sales.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  Object.defineProperty(input, 'files', { value: [xlsx], configurable: true })
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+
+  await waitFor(() => {
+    const formatSelect = screen.getByLabelText(/^format$/i, { selector: 'input' })
+    expect(formatSelect.value).toBe('Excel')
+  })
+
+  fireEvent.click(await screen.findByRole('button', { name: /excel options/i }))
+  fireEvent.input(screen.getByLabelText(/^sheet$/i), { target: { value: 'Sales' } })
+
+  fireEvent.input(screen.getByLabelText(/data description/i), {
+    target: { value: 'regional sales' }
+  })
+  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
+
+  await waitFor(() => expect(onGenerate).toHaveBeenCalledTimes(1))
+  const request = onGenerate.mock.calls[0][0] as GenerateRequest
+  expect(request.dataSource.fileFormat).toBe('excel')
+  expect(request.excelOptions).toEqual({ sheet_name: 'Sales' })
+})

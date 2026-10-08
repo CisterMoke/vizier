@@ -66,12 +66,15 @@ def _compat_warnings(bundle: InsightBundle, rows: list[dict]) -> list[str]:
     return warnings
 
 
-def _rows_from_source(source, csv_options=None) -> list[dict]:
-    """Derive rows from a file path (format inferred from the extension,
-    CSV options applied) or a pandas DataFrame."""
+def _rows_from_source(source, csv_options=None, excel_options=None) -> list[dict]:
+    """Derive rows from a file path (format inferred from the extension;
+    CSV/Excel options applied) or a pandas DataFrame."""
     if isinstance(source, pd.DataFrame):
         return parse_data(source)["rows"]
-    fmt = "jsonl" if str(source).endswith(".jsonl") else ("json" if str(source).endswith(".json") else "csv")
+    lower = str(source).lower()
+    if lower.endswith(".xlsx") or lower.endswith(".xls"):
+        return parse_data(source, "excel", excel_options=excel_options)["rows"]
+    fmt = "jsonl" if lower.endswith(".jsonl") else ("json" if lower.endswith(".json") else "csv")
     return parse_data(source, fmt, csv_options=csv_options)["rows"]
 
 
@@ -89,11 +92,16 @@ def render_bundle(
     mock rows are regenerated from the bundle's data profile.
     """
     if source is not None and rows is None:
-        rows = _rows_from_source(source, csv_options=bundle.csv_options)
+        rows = _rows_from_source(
+            source,
+            csv_options=bundle.csv_options,
+            excel_options=bundle.excel_options,
+        )
 
     real_rows = rows or []
     has_real_rows = len(real_rows) > 0
 
+    field_labels = {f.jsonPath: f.name for f in bundle.dataset_schema.fields}
     insights_list = []
     for i, saved in enumerate(bundle.insights):
         if has_real_rows:
@@ -112,7 +120,7 @@ def render_bundle(
             chart_spec=ChartSpec(traces=saved.traces),
             mock_seed=saved.mock_seed,
         )
-        spec = build_plotly_spec(insight, chart_rows)
+        spec = build_plotly_spec(insight, chart_rows, field_labels=field_labels)
         insight.chart_spec.plotlyData = spec["data"]
         insight.chart_spec.plotlyLayout = spec["layout"]
         insights_list.append(insight)

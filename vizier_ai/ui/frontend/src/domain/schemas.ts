@@ -24,7 +24,6 @@ export const chartSpecSchema = z.object({
 export const insightMetadataSchema = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
-  keyIdea: z.string().min(1),
   description: z.string().nullable().optional(),
 })
 

@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from vizier_ai.models.csv_options import CsvOptions
+from vizier_ai.models.excel_options import ExcelOptions
 
 
 def _df_to_result(df: pd.DataFrame, fmt: str) -> dict[str, Any]:
@@ -37,6 +38,30 @@ def parse_csv(source: str | Path, max_rows: int = None, csv_options: CsvOptions 
     if not options.header:
         df.columns = [f"column_{i + 1}" for i in range(len(df.columns))]
     return _df_to_result(df, "csv")
+
+
+def parse_excel(source: str | Path, max_rows: int = None, excel_options: ExcelOptions | None = None) -> dict[str, Any]:
+    """Parse an Excel (.xlsx) file via openpyxl.
+
+    Excel is a binary format: ``source`` must be a file path (str naming an
+    existing file, or Path) — raw text is rejected.
+    """
+    options = excel_options or ExcelOptions()
+    if isinstance(source, str) and not Path(source).is_file():
+        raise ValueError("Excel parsing requires a file path — raw text is not a spreadsheet.")
+
+    sheet = options.sheet_name if options.sheet_name is not None else 0
+    df = pd.read_excel(
+        source,
+        sheet_name=sheet,
+        header=0 if options.header else None,
+        skiprows=options.skip_rows,
+        nrows=max_rows,
+        engine="openpyxl",
+    )
+    if not options.header:
+        df.columns = [f"column_{i + 1}" for i in range(len(df.columns))]
+    return _df_to_result(df, "excel")
 
 
 def parse_json(source: str | Path, max_rows: int = None) -> dict[str, Any]:
@@ -98,7 +123,7 @@ def _normalize_source(source: str | Path) -> str | Path:
     return source
 
 
-def parse_data(source: str | Path | pd.DataFrame, format_hint: str = "csv", max_rows: int = None, csv_options: CsvOptions | None = None) -> dict[str, Any]:
+def parse_data(source: str | Path | pd.DataFrame, format_hint: str = "csv", max_rows: int = None, csv_options: CsvOptions | None = None, excel_options: ExcelOptions | None = None) -> dict[str, Any]:
     """Parse raw data from a file path, text, or a pandas DataFrame.
 
     Args:
@@ -106,10 +131,13 @@ def parse_data(source: str | Path | pd.DataFrame, format_hint: str = "csv", max_
             file, or Path), or raw text (str). A str that names an
             existing file is read from disk; any other str is parsed as
             raw data text.
-        format_hint: "csv", "json", or "jsonl". Ignored for DataFrames.
+        format_hint: "csv", "json", "jsonl", "excel" (or "xlsx"). Ignored
+            for DataFrames.
         max_rows: Maximum number of rows to parse (safety limit).
         csv_options: Optional CSV parsing options (delimiter, quote char,
             header, skip rows, encoding). Only applied to CSV.
+        excel_options: Optional Excel parsing options (sheet, header,
+            skip rows). Only applied to Excel.
 
     Raises:
         ValueError: Unknown format_hint, or the data could not be parsed
@@ -126,9 +154,11 @@ def parse_data(source: str | Path | pd.DataFrame, format_hint: str = "csv", max_
     source = _normalize_source(source)
     if format_hint == "csv":
         return parse_csv(source, max_rows, csv_options=csv_options)
+    elif format_hint == "excel" or format_hint == "xlsx":
+        return parse_excel(source, max_rows, excel_options=excel_options)
     elif format_hint == "json":
         return parse_json(source, max_rows)
     elif format_hint == "jsonl":
         return parse_jsonl(source, max_rows)
     else:
-        raise ValueError(f"Unknown format_hint {format_hint!r}: expected 'csv', 'json', or 'jsonl'.")
+        raise ValueError(f"Unknown format_hint {format_hint!r}: expected 'csv', 'json', 'jsonl', or 'excel'.")

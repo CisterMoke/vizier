@@ -3,7 +3,7 @@ import type { InsightCandidate } from './types'
 
 const insight: InsightCandidate = {
   id: 'ins-1',
-  metadata: { title: 'T', summary: 'S', keyIdea: 'K', description: null },
+  metadata: { title: 'T', summary: 'S', description: null },
   chart_spec: {
     traces: [{ chart_type: 'bar', x_axis: '$.county', y_axis: '$.county' }],
     plotlyData: [{ type: 'bar', x: ['King'], y: [5] }],

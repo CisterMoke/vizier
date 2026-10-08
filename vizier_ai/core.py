@@ -3,7 +3,7 @@
 This module contains all the library-grade logic with zero FastAPI/HTTP
 dependencies. It can be used independently as a Python library:
 
-    from vizier_ai.core import run_pipeline, call_llm, build_plotly_spec
+    from vizier_ai.core import run_pipeline, call_llm
 
 The LLM model and API key are injectable via parameters with env-based
 defaults. Prompts are overridable constants.
@@ -22,24 +22,13 @@ from pydantic_ai.exceptions import UserError
 from pydantic_ai.models import infer_model
 from pydantic_ai.providers import infer_provider_class
 
-from vizier_ai.chart_builder import build_plotly_spec
-from vizier_ai.constraints import apply_constraints
-from vizier_ai.mock_data import generate_mock_rows
-from vizier_ai.parser import _df_to_result, parse_data
-from vizier_ai.models.insights import (
-    ConstrainedInsightCandidates,
-    InsightCandidates,
-    Insight,
-    Insights
-)
-from vizier_ai.models.data_schema import DatasetSchema
-from vizier_ai.models.data_profile import DataProfile
 from vizier_ai.models.constraints import InsightConstraints
+from vizier_ai.models.insights import Insights
+from vizier_ai.parser import _df_to_result, parse_data
 from vizier_ai.prompts import (
     DEFAULT_SCHEMA_SYSTEM_PROMPT,
     DEFAULT_INSIGHT_SYSTEM_PROMPT,
     DEFAULT_DATA_PROFILE_SYSTEM_PROMPT,
-    DEFAULT_CONSTRAINT_FAILSAFE_INSTRUCTION,
 )
 
 
@@ -52,22 +41,6 @@ class UnsatisfiableConstraintsError(ValueError):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
-
-
-def _build_constraint_block(constraints: InsightConstraints) -> str:
-    lines = ["", "Apply these constraints:"]
-    if constraints.include_chart_types:
-        lines.append(f"- Every trace must use one of these chart types: {', '.join(constraints.include_chart_types)}.")
-    if constraints.exclude_chart_types:
-        lines.append(f"- No trace may use these chart types: {', '.join(constraints.exclude_chart_types)}.")
-    if constraints.include_fields:
-        lines.append(f"- Every insight must feature at least one of these fields: {', '.join(constraints.include_fields)}.")
-    if constraints.exclude_fields:
-        lines.append(f"- No trace may reference these fields in its axes or filter: {', '.join(constraints.exclude_fields)}.")
-    if constraints.guidance:
-        lines.append(f"- Guidance (soft, not verified): {constraints.guidance}")
-    lines.append(DEFAULT_CONSTRAINT_FAILSAFE_INSTRUCTION)
-    return "\n".join(lines)
 
 
 async def call_llm(
@@ -128,9 +101,9 @@ def _sniff_format(text: str) -> str:
     return "csv"
 
 
-def _parse_payload(text: str) -> dict:
+def _parse_payload(text: str, max_rows: int | None = None) -> dict:
     """Parse a fetched response into the parser dict contract, sniffing the format."""
-    return parse_data(text, _sniff_format(text))
+    return parse_data(text, _sniff_format(text), max_rows=max_rows)
 
 
 async def fetch_rest_data(method: str, url: str, headers: str | dict | None, body: str | None = None) -> dict:
@@ -184,11 +157,8 @@ async def run_pipeline(
 ) -> Insights:
     """Run the full LLM pipeline and build Plotly specs.
 
-    1. Call LLM to extract a dataset schema from the text description.
-    2. Call LLM to generate insights from the schema.
-    3. If no real data: call LLM to generate a data profile from the schema,
-       then generate mock rows from that profile for chart building.
-    4. Build Plotly specs for each insight.
+    Functional one-shot counterpart of ``Vizier``: constructs a bare
+    ``Vizier`` with the given options and runs it once.
 
     Args:
         schema_text: Free-form text description of the dataset.
@@ -207,89 +177,19 @@ async def run_pipeline(
     Returns:
         An ``Insights`` object. Each ``result.insights[i]`` carries its
         pre-built Plotly spec in ``chart_spec.plotlyData`` /
-        ``chart_spec.plotlyLayout``; render with ``insight.figure()`` or
-        ``result.save_html(directory)`` (requires ``vizier-ai[plot]``).
-        ``dataset_schema`` and ``data_profile`` are included so the result
-        can be saved to a bundle and re-rendered later.
+        ``chart_spec.plotlyLayout``; render with ``insight.show()`` (browser
+        or inline), ``insight.figure()``, or ``result.save_html(directory)``
+        (requires ``vizier-ai[plot]``). ``dataset_schema`` and
+        ``data_profile`` are included so the result can be saved to a bundle
+        and re-rendered later.
     """
-    schema_system = schema_system_prompt or DEFAULT_SCHEMA_SYSTEM_PROMPT
-    insight_system = insight_prompt or DEFAULT_INSIGHT_SYSTEM_PROMPT
-    profile_system = data_profile_system_prompt or DEFAULT_DATA_PROFILE_SYSTEM_PROMPT
+    from vizier_ai.pipeline import Vizier
 
-    if isinstance(real_data, pd.DataFrame):
-        real_data = parse_data(real_data)
-
-    real_rows = (real_data or {}).get("rows", [])
-    use_mock = len(real_rows) == 0
-    llm_kwargs = {"model": model, "api_key": api_key}
-
-    schema_prompt = f"Analyze this data description and extract the dataset schema:\n\n{schema_text}"
-    if not use_mock:
-        schema_prompt += f"\nHere are some data samples:\n{'\n'.join([json.dumps(row, ensure_ascii=False) for row in real_rows[:3]])}"
-
-    schema = await call_llm(
-        schema_system,
-        schema_prompt,
-        DatasetSchema,
-        **llm_kwargs,
-    )
-
-    insight_output_type = InsightCandidates
-    constraint_block = ""
-    if constraints is not None:
-        insight_output_type = ConstrainedInsightCandidates
-        constraint_block = _build_constraint_block(constraints)
-
-    insight_prompt = f"Given this dataset schema, produce up to 10 insight candidates:{constraint_block}\n\n{schema.model_dump_json()}"
-
-    insights_task = call_llm(
-        insight_system,
-        insight_prompt,
-        insight_output_type,
-        **llm_kwargs,
-    )
-    tasks = [insights_task]
-    if use_mock:
-        profile_task = call_llm(
-            profile_system,
-            f"Given this dataset schema, generate a dataProfile for mock data generation:\n\n{schema.model_dump_json()}",
-            DataProfile,
-            **llm_kwargs,
-        )
-        tasks.append(profile_task)
-
-    if not real_rows:
-        insights_output, profile_output = await asyncio.gather(*tasks)
-    else:
-        insights_output = await insights_task
-
-    insights_output: InsightCandidates | ConstrainedInsightCandidates
-    if constraints is not None:
-        if not insights_output.candidates:
-            raise UnsatisfiableConstraintsError(
-                insights_output.fallback_reason
-            )
-        filtered = apply_constraints(insights_output.candidates, constraints, schema)
-        if not filtered:
-            raise UnsatisfiableConstraintsError(
-                "No generated insight satisfied the hard constraints."
-            )
-        insights_output = InsightCandidates(candidates=filtered)
-
-    insights_list = []
-    for i, candidate in enumerate(insights_output.candidates):
-        rows = real_rows if not use_mock else generate_mock_rows(profile_output.model_dump(), seed=1337 + i)
-
-        insight = Insight.from_candidate(candidate)
-        if use_mock:
-            insight.mock_seed = 1337 + i
-        plotly_spec = build_plotly_spec(insight, rows)
-        insight.chart_spec.plotlyData = plotly_spec["data"]
-        insight.chart_spec.plotlyLayout = plotly_spec["layout"]
-        insights_list.append(insight)
-
-    return Insights(
-        insights=insights_list,
-        dataset_schema=schema,
-        data_profile=profile_output if use_mock else None,
-    )
+    return await Vizier(
+        model=model,
+        api_key=api_key,
+        schema_system_prompt=schema_system_prompt,
+        insight_prompt=insight_prompt,
+        data_profile_system_prompt=data_profile_system_prompt,
+        constraints=constraints,
+    ).run(schema_text, data=real_data)

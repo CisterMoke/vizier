@@ -4,6 +4,8 @@ Wraps the core library (vizier_ai.core) with HTTP endpoints, session
 storage, rate limiting, file upload handling, and static frontend serving.
 """
 
+import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -11,24 +13,21 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 sys.path.append(str(Path(__file__).parents[2]))
 
-from vizier_ai.core import (
-    run_pipeline,
-    fetch_rest_data,
-    fetch_sql_data,
-    build_plotly_spec,
-    generate_mock_rows,
-    UnsatisfiableConstraintsError,
-)
+from vizier_ai.core import fetch_rest_data, fetch_sql_data
 from vizier_ai.bundle import render_bundle
+from vizier_ai.chart_builder import build_plotly_spec
+from vizier_ai.mock_data import generate_mock_rows
+from vizier_ai.pipeline import Hooks, Vizier
 from vizier_ai.models.bundle import InsightBundle
 from vizier_ai.models.constraints import InsightConstraints
 from vizier_ai.models.csv_options import CsvOptions
+from vizier_ai.models.excel_options import ExcelOptions
 from vizier_ai.models.insights import ChartSpec, Insight, InsightMetadata
 from vizier_ai.parser import parse_data
 from vizier_ai.ui.models.api import (
@@ -43,7 +42,9 @@ from vizier_ai.ui.sessions import (
     _create_session,
     _get_session,
     _get_session_rows,
+    _session_field_labels,
     _set_session_insights,
+    _set_session_schema,
 )
 
 app = FastAPI(title="Vizier AI LLM Proxy")
@@ -124,11 +125,6 @@ async def rate_limit_middleware(request: Request, call_next):
     response.headers["X-RateLimit-Global-Limit"] = str(_global_config.max_requests)
     return response
 
-@app.exception_handler(UnsatisfiableConstraintsError)
-async def unsatisfiable_constraints_handler(request: Request, exc: UnsatisfiableConstraintsError):
-    return JSONResponse(status_code=422, content={"detail": exc.reason})
-
-
 def _parse_csv_options(csv_options: str) -> CsvOptions | None:
     if not csv_options.strip():
         return None
@@ -136,6 +132,15 @@ def _parse_csv_options(csv_options: str) -> CsvOptions | None:
         return CsvOptions.model_validate_json(csv_options)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid CSV options: {exc}")
+
+
+def _parse_excel_options(excel_options: str) -> ExcelOptions | None:
+    if not excel_options.strip():
+        return None
+    try:
+        return ExcelOptions.model_validate_json(excel_options)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid Excel options: {exc}")
 
 
 def _recipe_only(insights: list) -> list:
@@ -151,9 +156,68 @@ def _recipe_only(insights: list) -> list:
 
 # --- Routes ---
 
+def _stream_generation(schema_text, real_data, constraints, on_result):
+    """Run the generation pipeline as an NDJSON event stream.
+
+    Vizier hook events become progress events; the pipeline result is
+    serialized by ``on_result`` into the final ``complete`` event's
+    payload. Pipeline failures (unsatisfiable constraints, LLM errors,
+    ...) become ``error`` events — the response has already started
+    streaming by then, so they cannot be HTTP error codes.
+    """
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        # marks data preparation as its own step: fires once the request's
+        # data is parsed, right before the pipeline (and its LLM calls) starts
+        queue.put_nowait({
+            "type": "prepare",
+            "rowCount": (real_data or {}).get("rowCount", 0),
+        })
+
+        hooks = Hooks(
+            on_schema=lambda e: queue.put_nowait({
+                "type": "schema",
+                "fieldCount": len(e.schema.fields),
+                "warnings": list(e.warnings),
+            }),
+            on_insights=lambda e: queue.put_nowait({"type": "insights", "count": e.count}),
+            on_chart=lambda e: queue.put_nowait({
+                "type": "chart",
+                "index": e.index,
+                "total": e.total,
+                "insightId": e.insight_id,
+                "title": e.title,
+            }),
+        )
+
+        async def pipeline():
+            try:
+                result = await Vizier(constraints=constraints, hooks=hooks).run(
+                    schema_text, data=real_data
+                )
+                queue.put_nowait({"type": "complete", "payload": on_result(result)})
+            except Exception as exc:
+                queue.put_nowait({"type": "error", "detail": str(exc) or type(exc).__name__})
+
+        task = asyncio.create_task(pipeline())
+        while True:
+            event = await queue.get()
+            yield json.dumps(event, default=str) + "\n"
+            if event.get("type") in ("complete", "error"):
+                break
+        await task
+
+    return event_stream()
+
+
 @app.post("/api/generate")
-async def generate(request: GenerateRequest) -> InsightsResponse:
-    """Full pipeline for schema-only, REST API, or SQL data sources."""
+async def generate(request: GenerateRequest) -> StreamingResponse:
+    """Full pipeline for schema-only, REST API, or SQL data sources.
+
+    Streams NDJSON progress events (schema, insights, chart); the final
+    ``complete`` event carries the full response payload.
+    """
     real_data: dict | None = None
 
     if request.data_source_mode == "rest" and request.rest_url:
@@ -173,20 +237,26 @@ async def generate(request: GenerateRequest) -> InsightsResponse:
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=f"SQL result could not be parsed: {exc}")
 
-    result = await run_pipeline(request.schema_text, real_data, constraints=request.constraints)
+    def on_result(result):
+        session_id = _create_session(
+            real_data,
+            request.schema_text,
+            insights=_recipe_only(result.insights),
+            dataset_schema=result.dataset_schema,
+        )
+        response = InsightsResponse.model_validate(
+            dict(
+                **result.model_dump(),
+                session_id=session_id,
+            ),
+            by_name=True,
+        )
+        return response.model_dump(by_alias=True)
 
-    session_id = _create_session(
-        real_data, request.schema_text, insights=_recipe_only(result.insights)
+    return StreamingResponse(
+        _stream_generation(request.schema_text, real_data, request.constraints, on_result),
+        media_type="application/x-ndjson",
     )
-    response = InsightsResponse.model_validate(
-        dict(
-            **result.model_dump(),
-            session_id = session_id,
-        ),
-        by_name=True,
-    )
-
-    return response
 
 
 @app.post("/api/generate-upload")
@@ -196,8 +266,13 @@ async def generate_upload(
     fileFormat: str = Form(default="csv"),
     constraints: str = Form(default=""),
     csvOptions: str = Form(default=""),
-) -> InsightsResponse:
-    """Full pipeline with file upload via multipart form data."""
+    excelOptions: str = Form(default=""),
+) -> StreamingResponse:
+    """Full pipeline with file upload via multipart form data.
+
+    Streams NDJSON progress events; the final ``complete`` event carries
+    the full response payload.
+    """
     if MAX_FILE_SIZE and file.size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
@@ -218,32 +293,51 @@ async def generate_upload(
         tmp_path = Path(tmp.name)
 
     csv_options = _parse_csv_options(csvOptions)
+    excel_options = _parse_excel_options(excelOptions)
 
     try:
-        real_data = parse_data(tmp_path, fileFormat, csv_options=csv_options)
+        real_data = parse_data(
+            tmp_path,
+            fileFormat,
+            csv_options=csv_options,
+            excel_options=excel_options,
+        )
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=f"Uploaded file could not be parsed: {exc}")
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    result = await run_pipeline(schemaText, real_data, constraints=parsed_constraints)
+    def on_result(result):
+        session_id = _create_session(
+            real_data,
+            schemaText,
+            insights=_recipe_only(result.insights),
+            dataset_schema=result.dataset_schema,
+        )
+        response = InsightsResponse.model_validate(
+            dict(
+                **result.model_dump(),
+                session_id=session_id,
+                csv_options=csv_options,
+                excel_options=excel_options,
+            ),
+            by_name=True,
+        )
+        return response.model_dump(by_alias=True)
 
-    session_id = _create_session(real_data, schemaText, insights=_recipe_only(result.insights))
-    response = InsightsResponse.model_validate(
-        dict(
-            **result.model_dump(),
-            session_id = session_id,
-            csv_options = csv_options,
-        ),
-        by_name=True,
+    return StreamingResponse(
+        _stream_generation(schemaText, real_data, parsed_constraints, on_result),
+        media_type="application/x-ndjson",
     )
-
-    return response
 
 
 @app.post("/api/regenerate")
-async def regenerate(request: RegenerateRequest) -> InsightsResponse:
-    """Regenerate insights using stored session data (no re-upload)."""
+async def regenerate(request: RegenerateRequest) -> StreamingResponse:
+    """Regenerate insights using stored session data (no re-upload).
+
+    Streams NDJSON progress events; the final ``complete`` event carries
+    the full response payload.
+    """
     session = _get_session(request.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired.")
@@ -251,17 +345,22 @@ async def regenerate(request: RegenerateRequest) -> InsightsResponse:
     schema_text = session.get("schema_text", "")
     real_data = session.get("real_data")
 
-    result = await run_pipeline(schema_text, real_data, constraints=request.constraints)
-    _set_session_insights(request.session_id, _recipe_only(result.insights))
-    response = InsightsResponse.model_validate(
-        dict(
-            **result.model_dump(),
-            session_id = request.session_id,
-        ),
-        by_name=True,
-    )
+    def on_result(result):
+        _set_session_insights(request.session_id, _recipe_only(result.insights))
+        _set_session_schema(request.session_id, result.dataset_schema)
+        response = InsightsResponse.model_validate(
+            dict(
+                **result.model_dump(),
+                session_id=request.session_id,
+            ),
+            by_name=True,
+        )
+        return response.model_dump(by_alias=True)
 
-    return response
+    return StreamingResponse(
+        _stream_generation(schema_text, real_data, request.constraints, on_result),
+        media_type="application/x-ndjson",
+    )
 
 
 @app.post("/api/edit-chart")
@@ -279,10 +378,10 @@ async def edit_chart(request: EditChartRequest) -> dict:
     chart_spec = ChartSpec(traces=request.traces)
     insight = Insight(
         id="custom-chart",
-        metadata=InsightMetadata(title="Custom chart", summary="Custom chart", keyIdea="Custom chart"),
+        metadata=InsightMetadata(title="Custom chart", summary="Custom chart"),
         chart_spec=chart_spec,
     )
-    plotly_spec = build_plotly_spec(insight, rows)
+    plotly_spec = build_plotly_spec(insight, rows, field_labels=_session_field_labels(session))
 
     return {
         "plotlyData": plotly_spec["data"],
@@ -309,7 +408,7 @@ async def insight_svg(session_id: str, insight_id: str) -> Response:
     if insight is None:
         raise HTTPException(status_code=404, detail="Insight not found.")
 
-    plotly_spec = build_plotly_spec(insight, rows)
+    plotly_spec = build_plotly_spec(insight, rows, field_labels=_session_field_labels(session))
     try:
         svg = static_render.render_static_svg(plotly_spec)
     except static_render.StaticRenderUnavailableError as exc:
@@ -324,6 +423,7 @@ async def load_bundle(
     data: UploadFile | None = File(default=None),
     dataFormat: str = Form(default="csv"),
     csvOptions: str = Form(default=""),
+    excelOptions: str = Form(default=""),
 ) -> InsightsResponse:
     """Render a saved insight bundle, optionally with an attached dataset. No LLM call."""
     bundle_bytes = await bundle.read()
@@ -333,12 +433,29 @@ async def load_bundle(
         raise HTTPException(status_code=422, detail=f"Invalid bundle: {exc}")
 
     csv_options = _parse_csv_options(csvOptions) or parsed_bundle.csv_options
+    excel_options = _parse_excel_options(excelOptions) or parsed_bundle.excel_options
 
     rows: list[dict] = []
     if data is not None:
-        data_text = (await data.read()).decode("utf-8")
         try:
-            parsed_data = parse_data(data_text, dataFormat, csv_options=csv_options)
+            if dataFormat in ("excel", "xlsx"):
+                content = await data.read()
+                with tempfile.NamedTemporaryFile(
+                    mode="wb", suffix=".xlsx", delete=False
+                ) as tmp:
+                    tmp.write(content)
+                    tmp_path = Path(tmp.name)
+                try:
+                    parsed_data = parse_data(
+                        tmp_path, dataFormat, excel_options=excel_options
+                    )
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+            else:
+                data_text = (await data.read()).decode("utf-8")
+                parsed_data = parse_data(
+                    data_text, dataFormat, csv_options=csv_options
+                )
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=422, detail=f"Invalid data file: {exc}")
         rows = parsed_data.get("rows", [])
@@ -350,6 +467,7 @@ async def load_bundle(
         real_data,
         parsed_bundle.dataset_schema.model_dump_json(),
         insights=_recipe_only(result.insights),
+        dataset_schema=parsed_bundle.dataset_schema,
     )
 
     response = InsightsResponse.model_validate(
@@ -357,6 +475,7 @@ async def load_bundle(
             **result.model_dump(),
             session_id=session_id,
             csv_options=csv_options,
+            excel_options=excel_options,
             warnings=warnings,
         ),
         by_name=True,

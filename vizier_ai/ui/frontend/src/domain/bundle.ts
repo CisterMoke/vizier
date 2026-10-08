@@ -1,8 +1,8 @@
-import type { InsightCandidate, TraceSpec } from './types'
+import type { InsightCandidate, TraceSpec, DatasetSchema } from './types'
 import type { CsvOptionsPayload } from './csv'
 
 export interface BundleContext {
-  schema: unknown
+  schema: DatasetSchema | null
   dataProfile: unknown
 }
 

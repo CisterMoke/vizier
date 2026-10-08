@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from vizier_ai.models.csv_options import CsvOptions
+from vizier_ai.models.excel_options import ExcelOptions
 from vizier_ai.models.data_profile import DataProfile
 from vizier_ai.models.data_schema import DatasetSchema
 from vizier_ai.models.insights import InsightCandidate
@@ -40,4 +41,8 @@ class InsightBundle(BaseModel):
     csv_options: CsvOptions | None = Field(
         default=None,
         description="Parsing options used for the original CSV upload. Applied automatically when a dataset is attached to this bundle, so loading requires no manual configuration.",
+    )
+    excel_options: ExcelOptions | None = Field(
+        default=None,
+        description="Parsing options used for the original Excel upload (sheet, header, skip rows). Applied automatically when an Excel dataset is attached to this bundle.",
     )

@@ -26,7 +26,7 @@ from vizier_ai.models.insights import (
 def make_candidate(chart_type: str = "bar", x_axis: str = "$.county", y_axis: str = "$.revenue") -> InsightCandidate:
     return InsightCandidate(
         id="i1",
-        metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="T", summary="S"),
         traces=[TraceSpec(chart_type=chart_type, x_axis=x_axis, y_axis=y_axis)],
     )
 
@@ -132,7 +132,7 @@ class TestApplyConstraints:
     def test_drops_traces_with_excluded_chart_type(self):
         candidate = InsightCandidate(
             id="i1",
-            metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+            metadata=InsightMetadata(title="T", summary="S"),
             traces=[
                 TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.id"),
                 TraceSpec(chart_type="pie", x_axis="$.county", y_axis="$.id"),
@@ -167,7 +167,7 @@ class TestApplyConstraints:
     def test_drops_traces_referencing_excluded_field_by_name(self):
         candidate = InsightCandidate(
             id="i1",
-            metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+            metadata=InsightMetadata(title="T", summary="S"),
             traces=[
                 TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.id"),
                 TraceSpec(chart_type="line", x_axis="$.county", y_axis="$['revenue.usd']"),
@@ -191,7 +191,7 @@ class TestApplyConstraints:
     def test_exclude_field_matches_filter_field(self):
         candidate = InsightCandidate(
             id="i1",
-            metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+            metadata=InsightMetadata(title="T", summary="S"),
             traces=[
                 TraceSpec(
                     chart_type="bar",
@@ -211,12 +211,12 @@ class TestApplyConstraints:
         candidates = [
             InsightCandidate(
                 id="i1",
-                metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+                metadata=InsightMetadata(title="T", summary="S"),
                 traces=[TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.id")],
             ),
             InsightCandidate(
                 id="i2",
-                metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+                metadata=InsightMetadata(title="T", summary="S"),
                 traces=[TraceSpec(chart_type="bar", x_axis="$.id", y_axis="$['revenue.usd']")],
             ),
         ]
@@ -237,7 +237,7 @@ class TestApplyConstraints:
     def test_combines_chart_type_and_field_constraints(self):
         candidate = InsightCandidate(
             id="i1",
-            metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+            metadata=InsightMetadata(title="T", summary="S"),
             traces=[
                 TraceSpec(chart_type="bar", x_axis="$.county", y_axis="$.id"),
                 TraceSpec(chart_type="line", x_axis="$.id", y_axis="$['revenue.usd']"),
@@ -283,7 +283,7 @@ class FakeLLM:
 def make_candidate_with_traces(traces, candidate_id="i1"):
     return InsightCandidate(
         id=candidate_id,
-        metadata=InsightMetadata(title="T", summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title="T", summary="S"),
         traces=traces,
     )
 

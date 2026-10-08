@@ -1,5 +1,7 @@
-import { extractErrorMessage, insightSvgUrl, loadBundle } from './apiClient'
+import { extractErrorMessage, insightSvgUrl, loadBundle, callGenerate, regenerate } from './apiClient'
+import type { GenerationEvent } from './apiClient'
 import type { CsvOptionsPayload } from '../domain/csv'
+import type { GenerateRequest } from '../components/DataInputPanel'
 
 describe('extractErrorMessage', () => {
   it('extracts the detail from a JSON error body', () => {
@@ -85,5 +87,75 @@ describe('loadBundle', () => {
 
   it('builds the static insight svg url', () => {
     expect(insightSvgUrl('s1', 'i1')).toBe('http://localhost:8000/api/session/s1/insight/i1/svg')
+  })
+})
+
+const ndjsonResponse = (lines: string[]) => ({
+  ok: true,
+  body: null,
+  text: async () => lines.join('\n'),
+})
+
+describe('generation streaming', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const textRequest: GenerateRequest = {
+    schemaText: 'orders',
+    dataSource: { mode: 'none' },
+  }
+
+  it('feeds progress events to the handler and returns the complete payload', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ndjsonResponse([
+      JSON.stringify({ type: 'prepare', rowCount: 2 }),
+      JSON.stringify({ type: 'schema', fieldCount: 2, warnings: [] }),
+      JSON.stringify({ type: 'insights', count: 1 }),
+      JSON.stringify({ type: 'chart', index: 0, total: 1, insightId: 'i1', title: 'T' }),
+      JSON.stringify({ type: 'complete', payload: { sessionId: 's1', insights: [] } }),
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: GenerationEvent[] = []
+    const result = await callGenerate(textRequest, (event) => events.push(event))
+
+    expect(events.map((e) => e.type)).toEqual(['prepare', 'schema', 'insights', 'chart'])
+    expect(result.sessionId).toBe('s1')
+  })
+
+  it('throws the detail of an error event', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ndjsonResponse([
+      JSON.stringify({ type: 'error', detail: 'No geographic fields in the schema' }),
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(callGenerate(textRequest)).rejects.toThrow(
+      'No geographic fields in the schema'
+    )
+  })
+
+  it('rejects when the stream ends without a result', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ndjsonResponse([
+      JSON.stringify({ type: 'insights', count: 1 }),
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(callGenerate(textRequest)).rejects.toThrow(/without a result/)
+  })
+
+  it('streams regenerate responses too', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ndjsonResponse([
+      JSON.stringify({ type: 'insights', count: 2 }),
+      JSON.stringify({ type: 'complete', payload: { sessionId: 's1', insights: [] } }),
+    ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: GenerationEvent[] = []
+    const result = await regenerate('s1', undefined, (event) => events.push(event))
+
+    expect(events).toHaveLength(1)
+    expect(result.sessionId).toBe('s1')
+    const [url] = fetchMock.mock.calls[0]
+    expect(String(url)).toContain('/api/regenerate')
   })
 })

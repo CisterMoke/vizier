@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
+import { Notifications } from '@mantine/notifications'
 
 vi.mock('react-plotly.js', () => ({
   default: () => <div data-testid="plotly-chart" />
@@ -31,7 +32,7 @@ beforeEach(() => {
   loadBundleMock.mockReset()
 })
 
-const renderApp = () => render(<MantineProvider><App /></MantineProvider>)
+const renderApp = () => render(<MantineProvider><Notifications /><App /></MantineProvider>)
 
 const selectFile = (input: HTMLElement, file: File) => {
   Object.defineProperty(input, 'files', { value: [file], configurable: true })
@@ -57,7 +58,6 @@ it('calls backend API on generate and renders chart cards', async () => {
         metadata: {
           title: 'Orders trend',
           summary: 'Orders over time',
-          keyIdea: 'Orders climb weekly',
           description: null,
         },
         chart_spec: {
@@ -110,7 +110,7 @@ it('sends constraints with the regenerate request', async () => {
     insights: [
       {
         id: 'insight-1',
-        metadata: { title: 'T', summary: 'S', keyIdea: 'K', description: null },
+        metadata: { title: 'T', summary: 'S', description: null },
         chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} }
       }
     ]
@@ -143,7 +143,7 @@ it('loads a bundle through the import section', async () => {
     insights: [
       {
         id: 'imported-1',
-        metadata: { title: 'T', summary: 'S', keyIdea: 'K', description: null },
+        metadata: { title: 'T', summary: 'S', description: null },
         chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} },
         mock_seed: 1337
       }
@@ -163,4 +163,49 @@ it('loads a bundle through the import section', async () => {
   expect(loadBundleMock.mock.calls[0][0]).toBe(bundleFile)
 
   expect(await screen.findAllByTestId('chart-card')).toHaveLength(1)
+})
+
+it('shows a checkpointed progress bar while generating and clears it after', async () => {
+  callGenerateMock.mockImplementation(
+    (_request: unknown, onProgress?: (event: never) => void) =>
+      new Promise((resolve) => {
+        onProgress?.({ type: 'prepare', rowCount: 4 } as never)
+        onProgress?.({ type: 'schema', fieldCount: 3, warnings: [] } as never)
+        onProgress?.({ type: 'insights', count: 2 } as never)
+        onProgress?.({ type: 'chart', index: 0, total: 2, insightId: 'i1', title: 'T1' } as never)
+        setTimeout(() => resolve({ sessionId: 's', insights: [] }), 150)
+      })
+  )
+
+  renderApp()
+
+  fireEvent.input(screen.getByLabelText(/data description/i), {
+    target: { value: 'orders(id int, total decimal)' }
+  })
+  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
+
+  const panel = await screen.findByTestId('generation-progress')
+  expect(panel).toHaveTextContent('Building chart 1 of 2')
+  expect(screen.getByTestId('checkpoint-schema')).toBeInTheDocument()
+
+  await waitFor(
+    () => expect(screen.queryByTestId('generation-progress')).not.toBeInTheDocument(),
+    { timeout: 4000 }
+  )
+})
+
+it('shows an error toast when generation fails', async () => {
+  callGenerateMock.mockRejectedValue(new Error('LLM is down'))
+
+  renderApp()
+
+  fireEvent.input(screen.getByLabelText(/data description/i), {
+    target: { value: 'orders(id int, total decimal)' }
+  })
+  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
+
+  expect(await screen.findByText('LLM is down')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(screen.queryByTestId('generation-progress')).not.toBeInTheDocument()
+  )
 })

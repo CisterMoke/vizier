@@ -22,7 +22,7 @@ from vizier_ai.models.insights import (
 def make_insight(title: str, traces: list[TraceSpec]) -> Insight:
     return Insight(
         id="i1",
-        metadata=InsightMetadata(title=title, summary="S", keyIdea="K"),
+        metadata=InsightMetadata(title=title, summary="S"),
         chart_spec=ChartSpec(traces=traces),
     )
 
@@ -419,3 +419,149 @@ class TestTracePointCap:
         # lon/lat pairs stay aligned with their source rows
         assert trace["lon"][1] == pytest.approx(3 * 0.001)
         assert trace["lat"][1] == pytest.approx(40.0 + 3 * 0.0001)
+
+
+class TestAxisLabelPolish:
+    """Long tick labels must not collide with axis titles: automargin
+    reserves space, and over-long categorical tick labels are truncated
+    via tickvals/ticktext (the underlying data stays intact)."""
+
+    def make_bar_insight(self, categories: list[str]) -> Insight:
+        return make_insight("Chart", [
+            TraceSpec(chart_type="bar", x_axis="$.cat", y_axis="$.v"),
+        ])
+
+    def test_axes_use_automargin(self):
+        spec = build_plotly_spec(
+            self.make_bar_insight([]),
+            [{"cat": "A", "v": 1}],
+        )
+
+        assert spec["layout"]["xaxis"]["automargin"] is True
+        assert spec["layout"]["yaxis"]["automargin"] is True
+
+    def test_long_category_tick_labels_truncated(self):
+        long_name = "A very long category name that keeps going and going"
+        spec = build_plotly_spec(
+            self.make_bar_insight([]),
+            [{"cat": long_name, "v": 1}, {"cat": "Short", "v": 2}],
+        )
+
+        xaxis = spec["layout"]["xaxis"]
+        assert xaxis["ticktext"][0].endswith("…")
+        assert len(xaxis["ticktext"][0]) < len(long_name)
+        assert xaxis["tickvals"] == [0, 1]
+        # the data itself is untouched
+        assert spec["data"][0]["x"][0] == long_name
+        # plotly.js routes hover labels through the axis tick formatter,
+        # so ticktext would leak into tooltips — explicit per-point
+        # hovertext/hovertemplate restores the full value there
+        trace = spec["data"][0]
+        assert trace["hovertext"][0] == long_name
+        assert "%{hovertext}" in trace["hovertemplate"]
+
+    def test_short_tick_labels_untouched(self):
+        spec = build_plotly_spec(
+            self.make_bar_insight([]),
+            [{"cat": "Alpha", "v": 1}, {"cat": "Beta", "v": 2}],
+        )
+
+        xaxis = spec["layout"]["xaxis"]
+        assert "tickvals" not in xaxis
+        assert "ticktext" not in xaxis
+
+    def test_truncation_length_configurable(self, monkeypatch):
+        monkeypatch.setenv("MAX_TICK_LABEL_LENGTH", "5")
+        spec = build_plotly_spec(
+            self.make_bar_insight([]),
+            [{"cat": "ABCDEFGH", "v": 1}],
+        )
+
+        text = spec["layout"]["xaxis"]["ticktext"][0]
+        assert text.endswith("…")
+        assert len(text) == 6  # 5 chars + ellipsis
+
+    def test_truncation_can_be_disabled(self, monkeypatch):
+        monkeypatch.setenv("MAX_TICK_LABEL_LENGTH", "0")
+        spec = build_plotly_spec(
+            self.make_bar_insight([]),
+            [{"cat": "A very long category name that keeps going", "v": 1}],
+        )
+
+        assert "ticktext" not in spec["layout"]["xaxis"]
+
+    def test_mismatched_categories_across_traces_untouched(self):
+        insight = make_insight("Two traces", [
+            TraceSpec(chart_type="bar", x_axis="$.cat", y_axis="$.v"),
+            TraceSpec(chart_type="bar", x_axis="$.other", y_axis="$.v"),
+        ])
+        rows = [
+            {"cat": "A very long category name that keeps going", "other": "X", "v": 1},
+            {"cat": "B", "other": "A very long category name that keeps going", "v": 2},
+        ]
+
+        spec = build_plotly_spec(insight, rows)
+
+        assert "ticktext" not in spec["layout"]["xaxis"]
+
+
+class TestFieldLabels:
+    """Axis titles use schema field names when a jsonPath→name map is
+    provided; the jsonPath tail remains the fallback."""
+
+    def make_bar_insight(self) -> Insight:
+        return make_insight("Chart", [
+            TraceSpec(chart_type="bar", x_axis="$['region']", y_axis="$['revenue']", aggregation="sum"),
+        ])
+
+    def test_axis_titles_use_field_names(self):
+        spec = build_plotly_spec(
+            self.make_bar_insight(),
+            [{"region": "EMEA", "revenue": 10}],
+            field_labels={"$['region']": "Region", "$['revenue']": "Revenue"},
+        )
+
+        assert spec["layout"]["xaxis"]["title"]["text"] == "Region"
+        assert spec["layout"]["yaxis"]["title"]["text"] == "Revenue"
+
+    def test_unknown_paths_fall_back_to_jsonpath_tail(self):
+        spec = build_plotly_spec(
+            self.make_bar_insight(),
+            [{"region": "EMEA", "revenue": 10}],
+            field_labels={"$['region']": "Region"},
+        )
+
+        assert spec["layout"]["xaxis"]["title"]["text"] == "Region"
+        assert spec["layout"]["yaxis"]["title"]["text"] == "revenue"
+
+    def test_secondary_yaxis_title_uses_field_name(self):
+        insight = make_insight("Overlay", [
+            TraceSpec(chart_type="bar", x_axis="$['region']", y_axis="$['revenue']"),
+            TraceSpec(chart_type="line", x_axis="$['region']", y_axis="$['units']"),
+        ])
+
+        spec = build_plotly_spec(
+            insight,
+            [{"region": "EMEA", "revenue": 10, "units": 5}],
+            field_labels={"$['region']": "Region", "$['revenue']": "Revenue", "$['units']": "Units"},
+        )
+
+        assert spec["layout"]["yaxis2"]["title"]["text"] == "Units"
+
+    def test_geomap_colorbar_title_uses_field_name(self):
+        insight = make_insight("Map", [
+            TraceSpec(
+                chart_type="geomap",
+                x_axis="$['lon']",
+                y_axis="$['lat']",
+                z_axis="$['intensity']",
+            ),
+        ])
+
+        spec = build_plotly_spec(
+            insight,
+            [{"lon": 1.0, "lat": 2.0, "intensity": 3.0}],
+            field_labels={"$['intensity']": "Intensity"},
+        )
+
+        assert spec["data"][0]["marker"]["colorbar"]["title"]["text"] == "Intensity"
