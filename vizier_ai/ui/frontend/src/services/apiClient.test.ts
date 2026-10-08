@@ -1,7 +1,7 @@
 import { extractErrorMessage, insightSvgUrl, loadBundle, callGenerate, regenerate } from './apiClient'
 import type { GenerationEvent } from './apiClient'
 import type { CsvOptionsPayload } from '../domain/csv'
-import type { GenerateRequest } from '../components/DataInputPanel'
+import type { GenerateRequest } from '../domain/types'
 
 describe('extractErrorMessage', () => {
   it('extracts the detail from a JSON error body', () => {

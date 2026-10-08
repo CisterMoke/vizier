@@ -1,3 +1,7 @@
+import type { InsightConstraintsPayload } from './constraints'
+import type { CsvOptionsPayload } from './csv'
+import type { ExcelOptionsPayload } from './excel'
+
 export interface InsightMetadata {
   title: string
   summary: string
@@ -38,4 +42,33 @@ export interface InsightCandidate {
   metadata: InsightMetadata
   chart_spec: ChartSpec
   mock_seed?: number | null
+}
+
+export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
+export type FileFormat = 'csv' | 'json' | 'jsonl' | 'excel'
+
+export interface RestApiConfig {
+  method: string
+  url: string
+  headers: string
+  body: string
+}
+
+export interface SqlConfig {
+  connectionString: string
+  query: string
+}
+
+export interface GenerateRequest {
+  schemaText: string
+  dataSource: {
+    mode: DataSourceMode
+    file?: File
+    fileFormat?: FileFormat
+    rest?: RestApiConfig
+    sql?: SqlConfig
+  }
+  constraints?: InsightConstraintsPayload
+  csvOptions?: CsvOptionsPayload
+  excelOptions?: ExcelOptionsPayload
 }

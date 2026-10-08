@@ -1,10 +1,9 @@
-import type { InsightCandidate, TraceSpec } from '../domain/types'
+import type { GenerateRequest, InsightCandidate, TraceSpec } from '../domain/types'
 import { parseInsights } from '../domain/schemas'
 import type { BundleContext } from '../domain/bundle'
 import type { InsightConstraintsPayload } from '../domain/constraints'
 import type { CsvOptionsPayload } from '../domain/csv'
 import type { ExcelOptionsPayload } from '../domain/excel'
-import type { GenerateRequest } from '../components/DataInputPanel'
 
 export interface GenerateResponse {
   sessionId: string

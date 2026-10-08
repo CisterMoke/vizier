@@ -2,44 +2,15 @@ import { Button, FileInput, Paper, Select, Stack, Text, Textarea, TextInput, Tit
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { fetchConfig, type ServerConfig } from '../services/apiClient'
-import type { InsightConstraintsPayload } from '../domain/constraints'
 import type { ConstraintsState } from '../domain/constraints'
 import { EMPTY_CONSTRAINTS } from '../domain/constraints'
 import { buildCsvOptionsPayload, DEFAULT_CSV_OPTIONS, type CsvOptionsPayload, type CsvOptionsState } from '../domain/csv'
-import { buildExcelOptionsPayload, DEFAULT_EXCEL_OPTIONS, type ExcelOptionsPayload, type ExcelOptionsState } from '../domain/excel'
+import { buildExcelOptionsPayload, DEFAULT_EXCEL_OPTIONS, type ExcelOptionsState } from '../domain/excel'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ConstraintsPanel } from './ConstraintsPanel'
 import { CsvOptionsSection } from './CsvOptionsSection'
 import { ExcelOptionsSection } from './ExcelOptionsSection'
-
-export type DataSourceMode = 'none' | 'file' | 'rest' | 'sql'
-export type FileFormat = 'csv' | 'json' | 'jsonl' | 'excel'
-
-export interface RestApiConfig {
-  method: string
-  url: string
-  headers: string
-  body: string
-}
-
-export interface SqlConfig {
-  connectionString: string
-  query: string
-}
-
-export interface GenerateRequest {
-  schemaText: string
-  dataSource: {
-    mode: DataSourceMode
-    file?: File
-    fileFormat?: FileFormat
-    rest?: RestApiConfig
-    sql?: SqlConfig
-  }
-  constraints?: InsightConstraintsPayload
-  csvOptions?: CsvOptionsPayload
-  excelOptions?: ExcelOptionsPayload
-}
+import type { DataSourceMode, FileFormat, GenerateRequest, RestApiConfig, SqlConfig } from '../domain/types'
 
 interface DataInputPanelProps {
   onGenerate: (request: GenerateRequest) => Promise<void>
