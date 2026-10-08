@@ -122,7 +122,7 @@ function Studio() {
   const handleDelete = (insightId: string) => {
     const removed: RemovedInsight | null = workspace.removeInsight(insightId)
     if (!removed) return
-    notifications.show({
+    const toastId = notifications.show({
       message: (
         <Group gap="xs">
           <Text size="sm">Insight deleted</Text>
@@ -131,7 +131,7 @@ function Studio() {
             variant="light"
             onClick={() => {
               workspace.restoreInsight(removed)
-              notifications.clean()
+              notifications.hide(toastId)
             }}
           >
             Undo

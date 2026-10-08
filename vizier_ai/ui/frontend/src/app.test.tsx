@@ -133,6 +133,25 @@ it('deleting a card shows an undo notification that restores it', async () => {
   expect(await screen.findByTestId('chart-card')).toBeInTheDocument()
 })
 
+it('undoing one delete keeps the other undo toast available', async () => {
+  callGenerateMock.mockResolvedValue({
+    sessionId: 's1',
+    insights: [insight('i1', 'First'), insight('i2', 'Second')],
+    context: null,
+  })
+  renderApp()
+  await generate()
+  fireEvent.click(screen.getAllByRole('button', { name: /delete insight/i })[0])
+  await screen.findByRole('button', { name: /undo/i })
+  fireEvent.click(screen.getAllByRole('button', { name: /delete insight/i })[0])
+  const undoToasts = await screen.findAllByRole('button', { name: /undo/i })
+  expect(undoToasts).toHaveLength(2)
+
+  fireEvent.click(undoToasts[0])
+  expect(await screen.findAllByTestId('chart-card')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: /undo/i })).toBeInTheDocument()
+})
+
 it('reset via the panel clears the grid and unlocks inputs', async () => {
   callGenerateMock.mockResolvedValue({
     sessionId: 's1',
