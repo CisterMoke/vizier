@@ -9,7 +9,31 @@ import { InsightCard } from './InsightCard'
 const SizedGrid = WidthProvider(ReactGridLayout)
 
 const ROW_HEIGHT = 80
-const MARGIN: [number, number] = [16, 16]
+const MARGIN: [number, number] = [10, 10]
+
+/** Always-visible, in-theme resize affordance for the grid cells. Carries
+ * the library class so react-grid-layout positions it and cancels card
+ * drags started on it. */
+const ResizeHandle = () => (
+  <span
+    className="react-resizable-handle react-resizable-handle-se grid-resize-handle"
+    data-testid="resize-handle"
+  >
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M1.75 8.25 8.25 1.75" />
+      <path d="M1.75 5.25v3h3" />
+    </svg>
+  </span>
+)
 
 interface InsightGridProps {
   onEditOpen: (insightId: string) => void
@@ -38,6 +62,7 @@ export function InsightGrid({ onEditOpen, onDelete }: InsightGridProps) {
       compactType="vertical"
       preventCollision={false}
       draggableHandle=".grid-drag-handle"
+      resizeHandle={<ResizeHandle />}
     >
       {workspace.insights.map((insight) => (
         <div key={insight.id} style={{ display: 'flex' }}>

@@ -19,3 +19,23 @@ body {
 #app {
   min-height: 100vh;
 }
+
+/* Insight grid resize handles: always visible, in-theme. Overrides the
+ * library's hover-only black triangle. */
+.react-grid-item > .react-resizable-handle.grid-resize-handle {
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  color: #6b7280;
+  transition: color 150ms ease;
+}
+
+.react-grid-item > .react-resizable-handle.grid-resize-handle:hover {
+  color: #67e8f9;
+}
+
+.react-grid-item > .react-resizable-handle.grid-resize-handle::after {
+  display: none;
+}

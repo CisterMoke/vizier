@@ -13,8 +13,13 @@ vi.mock('react-grid-layout/legacy', () => ({
   WidthProvider: (Wrapped: unknown) => {
     const Grid = (props: Record<string, unknown>) => (
       <div>
-        <div data-testid="grid-layout" data-layout={JSON.stringify(props.layout ?? [])}>
+        <div
+          data-testid="grid-layout"
+          data-layout={JSON.stringify(props.layout ?? [])}
+          data-margin={JSON.stringify(props.margin ?? [])}
+        >
           {props.children as never}
+          {props.resizeHandle as never}
         </div>
         <button
           data-testid="emit-layout"
@@ -102,6 +107,18 @@ it('syncs layout changes from the grid into the workspace', () => {
   fireEvent.click(screen.getByTestId('emit-layout'))
   const layout = JSON.parse(screen.getByTestId('grid-layout').dataset.layout ?? '[]')
   expect(layout[0]).toMatchObject({ i: 'a', x: 4 })
+})
+
+it('uses compact 10px gutters between cells', () => {
+  renderGrid([insight('a')])
+  fireEvent.click(screen.getByTestId('hydrate'))
+  expect(JSON.parse(screen.getByTestId('grid-layout').dataset.margin ?? 'null')).toEqual([10, 10])
+})
+
+it('renders a visible resize handle affordance on cells', () => {
+  renderGrid([insight('a')])
+  fireEvent.click(screen.getByTestId('hydrate'))
+  expect(screen.getByTestId('resize-handle').querySelector('svg')).not.toBeNull()
 })
 
 it('forwards edit and delete callbacks per card', () => {
