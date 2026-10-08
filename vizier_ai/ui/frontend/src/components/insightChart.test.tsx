@@ -4,15 +4,27 @@ import { MantineProvider } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import { InsightChart } from './InsightChart'
 
-const state = vi.hoisted(() => ({ inViewport: true, plotRenders: [] as Array<{ data: unknown; layout: unknown; config: unknown }> }))
+const state = vi.hoisted(() => ({
+  intersecting: null as boolean | null,
+  instances: [] as Array<{ deliver: (entries: Array<{ isIntersecting: boolean }>) => void }>,
+  plotRenders: [] as Array<{ data: unknown; layout: unknown; config: unknown }>,
+}))
 
-vi.mock('@mantine/hooks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@mantine/hooks')>()
-  return {
-    ...actual,
-    useInViewport: () => ({ ref: () => {}, inViewport: state.inViewport }),
+class IntersectionObserverStub {
+  callback: (entries: Array<{ isIntersecting: boolean }>) => void
+  constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) {
+    this.callback = callback
+    state.instances.push({ deliver: (entries) => this.callback(entries) })
   }
-})
+  observe() {
+    if (state.intersecting !== null) {
+      this.callback([{ isIntersecting: state.intersecting }])
+    }
+  }
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
 
 vi.mock('react-plotly.js', () => ({
   default: (props: {
@@ -66,11 +78,13 @@ const renderChart = (insight: InsightCandidate, edit = null, onGraphDivChange?: 
   )
 
 beforeEach(() => {
-  state.inViewport = true
+  state.intersecting = null
+  state.instances.length = 0
   state.plotRenders.length = 0
 })
 
 it('mounts a live plot for in-viewport cards and reports the graph div', async () => {
+  state.intersecting = true
   const onGraphDivChange = vi.fn()
   renderChart(liveInsight, null, onGraphDivChange)
   await screen.findByTestId('plotly-chart')
@@ -86,7 +100,7 @@ it('renders the static svg for static insights and never mounts a plot', () => {
 })
 
 it('shows a thumbnail instead of a plot when out of viewport', () => {
-  state.inViewport = false
+  state.intersecting = false
   renderChart(liveInsight)
   expect(screen.getByRole('img', { name: /revenue/i }).getAttribute('src')).toBe(
     '/api/session/s1/insight/ins-1/svg'
@@ -105,7 +119,15 @@ it('prefers an edited static svg over the session endpoint', () => {
   expect(screen.getByRole('img').getAttribute('src') ?? '').toMatch(/^data:image\/svg\+xml/)
 })
 
+it('renders a skeleton until the first viewport observation, fetching no thumbnail', () => {
+  state.intersecting = null
+  renderChart(liveInsight)
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('plotly-chart')).not.toBeInTheDocument()
+})
+
 it('keeps plot prop identities stable across unrelated re-renders', async () => {
+  state.intersecting = true
   const Stateful = () => {
     const [tick, setTick] = useState(0)
     return (

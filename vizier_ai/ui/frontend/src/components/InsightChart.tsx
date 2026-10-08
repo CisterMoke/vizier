@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Skeleton, Stack } from '@mantine/core'
-import { useInViewport } from '@mantine/hooks'
 import type { InsightCandidate } from '../domain/types'
 import type { InsightEdit } from '../domain/chartEdit'
 import PlotlyComponent from 'react-plotly.js'
@@ -25,7 +24,12 @@ interface InsightChartProps {
 }
 
 export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: InsightChartProps) {
-  const { ref: viewportRef, inViewport } = useInViewport<HTMLDivElement>()
+  // null = not yet observed: keep a skeleton so out-of-viewport thumbnails
+  // (a server-side kaleido render) are never fetched speculatively on mount
+  const [viewState, setViewState] = useState<boolean | null>(() =>
+    typeof IntersectionObserver === 'undefined' ? true : null
+  )
+  const viewportRef = useRef<HTMLDivElement | null>(null)
   const [modulesReady, setModulesReady] = useState(false)
 
   const plotlyData = edit?.plotlyData ?? insight.chart_spec.plotlyData ?? null
@@ -65,6 +69,18 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
   }, [traceTypes])
 
   useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return
+    const node = viewportRef.current
+    if (!node) return
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1]
+      setViewState(entry?.isIntersecting ?? false)
+    }, { rootMargin: '100px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     return () => onGraphDivChange?.(null)
   }, [onGraphDivChange])
 
@@ -83,14 +99,14 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
               Static preview
             </Badge>
           </Stack>
-        ) : !inViewport ? (
+        ) : viewState === false ? (
           <img
             src={insightSvgUrl(sessionId, insight.id)}
             alt={insight.metadata.title}
             data-testid="chart-thumbnail"
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
-        ) : modulesReady ? (
+        ) : modulesReady && viewState === true ? (
           <Plot
             data={plotlyData as Plotly.Data[]}
             layout={plotLayout}
