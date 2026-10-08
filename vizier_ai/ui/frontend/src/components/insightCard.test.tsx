@@ -68,9 +68,13 @@ it('exposes edit and delete actions', () => {
   expect(onDelete).toHaveBeenCalledTimes(1)
 })
 
-it('save bundle is disabled without schema context', () => {
+it('save bundle shows the disabled state and tooltip affordance without schema context', () => {
   renderCard(liveInsight, null)
-  expect((screen.getByRole('button', { name: /save insight bundle/i }) as HTMLButtonElement).disabled).toBe(true)
+  const save = screen.getByRole('button', { name: /save insight bundle/i }) as HTMLButtonElement
+  expect(save.disabled).toBe(false)
+  expect(save.hasAttribute('data-disabled')).toBe(true)
+  fireEvent.click(save)
+  expect(saveInsightBundle).not.toHaveBeenCalled()
 })
 
 it('save bundle downloads through the helper with schema context', () => {

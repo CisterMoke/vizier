@@ -76,8 +76,8 @@ export function InsightCard({ insight, sessionId, bundleContext, onEdit, onDelet
               variant="subtle"
               aria-label="Save insight bundle"
               title="Save insight bundle"
-              disabled={!bundleContext?.schema}
-              onClick={() => saveInsightBundle(insight, bundleContext)}
+              data-disabled={!bundleContext?.schema}
+              onClick={() => bundleContext?.schema && saveInsightBundle(insight, bundleContext)}
             >
               ⬇
             </ActionIcon>
