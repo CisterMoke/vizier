@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Container, Group, Text } from '@mantine/core'
 
-export type GenerationPhase = 'prepare' | 'schema' | 'insights' | 'charts' | 'done'
+export type GenerationPhase = 'upload' | 'prepare' | 'schema' | 'insights' | 'charts' | 'done'
 
 interface GenerationProgressProps {
   phase: GenerationPhase
   label: string
   chartIndex?: number
   chartTotal?: number
+  uploadFraction?: number
   onFinished?: () => void
 }
 
@@ -40,6 +41,10 @@ const SLOW_CREEP_TAU_MS = 20_000
 const creepTauMs = (phase: GenerationPhase): number =>
   phase === 'schema' || phase === 'insights' ? SLOW_CREEP_TAU_MS : CREEP_TAU_MS
 
+/** Upload progress is real, not uncertain: track it tightly instead of
+ * creeping, so the bar stays honest while bytes leave. */
+const UPLOAD_TRACK_TAU_MS = 250
+
 /** Ceiling the fill creeps toward while a phase is pending: 80% of the
  * way from the last earned position to the next checkpoint. The bar
  * visibly stalls short of the checkpoint, so earning it stays obvious —
@@ -49,11 +54,13 @@ export const CREEP_GAP_FRACTION = 0.8
 export const creepTarget = (
   phase: GenerationPhase,
   chartIndex?: number,
-  chartTotal?: number
+  chartTotal?: number,
+  uploadFraction?: number
 ): number => {
   const reached = reachedPosition(phase, chartIndex, chartTotal)
-  const target = targetPosition(phase, chartIndex, chartTotal)
-  return reached + (target - reached) * CREEP_GAP_FRACTION
+  const target = targetPosition(phase, chartIndex, chartTotal, uploadFraction)
+  const gapFraction = phase === 'upload' ? 1 : CREEP_GAP_FRACTION
+  return reached + (target - reached) * gapFraction
 }
 
 /** Finishing is certain: ease out to 100% quickly instead of creeping. */
@@ -64,6 +71,8 @@ const FADE_DURATION_MS = 250
  * checkpoint's work completed. */
 const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal?: number): number => {
   switch (phase) {
+    case 'upload':
+      return 0
     case 'prepare':
       return 0
     case 'schema':
@@ -80,8 +89,15 @@ const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal
   }
 }
 
-const targetPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal?: number): number => {
+const targetPosition = (
+  phase: GenerationPhase,
+  chartIndex?: number,
+  chartTotal?: number,
+  uploadFraction?: number
+): number => {
   switch (phase) {
+    case 'upload':
+      return 25 * (uploadFraction ?? 0)
     case 'prepare':
       return 25
     case 'schema':
@@ -106,7 +122,7 @@ const checkpointFilled = (checkpoint: Checkpoint, phase: GenerationPhase, chartI
 const checkpointActive = (checkpoint: Checkpoint, phase: GenerationPhase): boolean => {
   switch (checkpoint.key) {
     case 'schema':
-      return phase === 'prepare' || phase === 'schema'
+      return phase === 'upload' || phase === 'prepare' || phase === 'schema'
     case 'insights':
       return phase === 'insights'
     case 'charts':
@@ -126,16 +142,17 @@ export function GenerationProgress({
   label,
   chartIndex,
   chartTotal,
+  uploadFraction,
   onFinished,
 }: GenerationProgressProps) {
   const fillRef = useRef<HTMLDivElement>(null)
   const pctRef = useRef<HTMLDivElement>(null)
   const displayRef = useRef(0)
-  const targetRef = useRef(creepTarget(phase, chartIndex, chartTotal))
+  const targetRef = useRef(creepTarget(phase, chartIndex, chartTotal, uploadFraction))
   const finishedRef = useRef(false)
   const [closing, setClosing] = useState(false)
 
-  targetRef.current = creepTarget(phase, chartIndex, chartTotal)
+  targetRef.current = creepTarget(phase, chartIndex, chartTotal, uploadFraction)
 
   useEffect(() => {
     if (phase !== 'done') {
@@ -179,7 +196,7 @@ export function GenerationProgress({
         // uncertainty: exponential approach — asymptotic creep toward
         // 80% of the gap to the next checkpoint, stalling visibly short
         const current = displayRef.current
-        const next = target - (target - current) * Math.exp(-dt / creepTauMs(phase))
+        const next = target - (target - current) * Math.exp(-dt / (phase === 'upload' ? UPLOAD_TRACK_TAU_MS : creepTauMs(phase)))
         paint(next)
       }
 

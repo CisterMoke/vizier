@@ -59,6 +59,17 @@ describe('GenerationProgress', () => {
     await waitFor(() => expect(onFinished).toHaveBeenCalled(), { timeout: 3000 })
   })
 
+  it('tracks upload progress exactly within the schema band', () => {
+    expect(creepTarget('upload', undefined, undefined, 0)).toBe(0)
+    expect(creepTarget('upload', undefined, undefined, 0.5)).toBe(12.5)
+    expect(creepTarget('upload', undefined, undefined, 1)).toBe(25)
+  })
+
+  it('pulses the schema checkpoint while uploading', () => {
+    renderProgress({ phase: 'upload', label: 'Uploading data… 50%', uploadFraction: 0.5 })
+    expect(screen.getByTestId('checkpoint-schema').className).toContain('animate-pulse')
+  })
+
   it('caps the asymptotic creep at 80% of the gap to the next checkpoint', () => {
     expect(creepTarget('prepare')).toBe(20)
     expect(creepTarget('schema')).toBe(20)

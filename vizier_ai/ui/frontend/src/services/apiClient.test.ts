@@ -159,3 +159,72 @@ describe('generation streaming', () => {
     expect(String(url)).toContain('/api/regenerate')
   })
 })
+
+
+class FakeXHR {
+  static instances: FakeXHR[] = []
+  upload: { onprogress: ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null }
+  onload: (() => void) | null = null
+  onerror: (() => void) | null = null
+  status = 200
+  responseText = ''
+  open = vi.fn()
+  send = vi.fn(() => {
+    FakeXHR.instances.push(this)
+  })
+}
+
+describe('file upload generation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    FakeXHR.instances = []
+  })
+
+  const fileRequest: GenerateRequest = {
+    schemaText: 'orders',
+    dataSource: {
+      mode: 'file',
+      file: new File(['id,total\n1,2'], 'data.csv', { type: 'text/csv' }),
+      fileFormat: 'csv',
+    },
+  }
+
+  it('reports upload progress and streams the response events', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXHR)
+
+    const events: GenerationEvent[] = []
+    const pending = callGenerate(fileRequest, (event) => events.push(event)).then(
+      (result) => result,
+      (error) => {
+        throw error
+      }
+    )
+
+    await vi.waitFor(() => expect(FakeXHR.instances).toHaveLength(1))
+    const xhr = FakeXHR.instances[0]
+    xhr.responseText = [
+      JSON.stringify({ type: 'prepare', rowCount: 2 }),
+      JSON.stringify({ type: 'complete', payload: { sessionId: 's-upload', insights: [] } }),
+    ].join('\n')
+    xhr.upload.onprogress?.({ lengthComputable: true, loaded: 50, total: 100 })
+    xhr.onload?.()
+
+    const result = await pending
+    expect(events.map((event) => event.type)).toEqual(['upload', 'prepare'])
+    expect(events[0]).toMatchObject({ type: 'upload', fraction: 0.5 })
+    expect(result.sessionId).toBe('s-upload')
+  })
+
+  it('rejects with the backend detail when the upload fails', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXHR)
+
+    const pending = callGenerate(fileRequest)
+    await vi.waitFor(() => expect(FakeXHR.instances).toHaveLength(1))
+    const xhr = FakeXHR.instances[0]
+    xhr.status = 422
+    xhr.responseText = '{"detail": "Unsupported file format"}'
+    xhr.onload?.()
+
+    await expect(pending).rejects.toThrow('Unsupported file format')
+  })
+})

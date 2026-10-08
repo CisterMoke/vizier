@@ -19,6 +19,7 @@ export interface ServerConfig {
 }
 
 export type GenerationEvent =
+  | { type: 'upload'; fraction: number }
   | { type: 'prepare'; rowCount: number }
   | { type: 'schema'; fieldCount: number; warnings: string[] }
   | { type: 'insights'; count: number }
@@ -75,6 +76,70 @@ async function parseResponse(response: Response): Promise<GenerateResponse> {
   return buildGenerateResponse(await response.json())
 }
 
+const processGenerationLine = (
+  line: string,
+  onProgress?: ProgressHandler
+): Record<string, unknown> | null => {
+  const event = JSON.parse(line) as { type: string; payload?: unknown; detail?: unknown }
+  if (event.type === 'complete') {
+    return event.payload as Record<string, unknown>
+  }
+  if (event.type === 'error') {
+    throw new Error(
+      typeof event.detail === 'string' ? event.detail : 'Generation failed.'
+    )
+  }
+  onProgress?.(event as GenerationEvent)
+  return null
+}
+
+const processGenerationText = (
+  text: string,
+  onProgress?: ProgressHandler
+): Record<string, unknown> | null => {
+  let payload: Record<string, unknown> | null = null
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    const result = processGenerationLine(line, onProgress)
+    if (result) payload = result
+  }
+  return payload
+}
+
+const parseGenerationPayload = (payload: Record<string, unknown> | null): GenerateResponse => {
+  if (!payload) {
+    throw new Error('The generation stream ended without a result.')
+  }
+  return buildGenerateResponse(payload)
+}
+
+/** Uploads the form via XHR — the only browser API that reports upload
+ * progress — emitting `upload` events (0..1) through onProgress as the
+ * bytes leave, then resolving with the full NDJSON response text. */
+const uploadForGenerationText = (
+  url: string,
+  formData: FormData,
+  onProgress?: ProgressHandler
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.upload.onprogress = (event) => {
+      if (onProgress && event.lengthComputable && event.total > 0) {
+        onProgress({ type: 'upload', fraction: Math.min(event.loaded / event.total, 1) })
+      }
+    }
+    xhr.onerror = () => reject(new Error('The upload request failed.'))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.responseText)
+      } else {
+        reject(new Error(extractErrorMessage(xhr.status, xhr.responseText)))
+      }
+    }
+    xhr.send(formData)
+  })
+
 /**
  * Read an NDJSON generation stream: progress events are handed to
  * onProgress as they arrive; the final complete event becomes the
@@ -85,30 +150,6 @@ async function readGenerationStream(
   response: Response,
   onProgress?: ProgressHandler
 ): Promise<GenerateResponse> {
-  const processLine = (line: string): Record<string, unknown> | null => {
-    const event = JSON.parse(line) as { type: string; payload?: unknown; detail?: unknown }
-    if (event.type === 'complete') {
-      return event.payload as Record<string, unknown>
-    }
-    if (event.type === 'error') {
-      throw new Error(
-        typeof event.detail === 'string' ? event.detail : 'Generation failed.'
-      )
-    }
-    onProgress?.(event as GenerationEvent)
-    return null
-  }
-
-  const processBuffer = (chunk: string): Record<string, unknown> | null => {
-    let payload: Record<string, unknown> | null = null
-    for (const line of chunk.split('\n')) {
-      if (!line.trim()) continue
-      const result = processLine(line)
-      if (result) payload = result
-    }
-    return payload
-  }
-
   let payload: Record<string, unknown> | null = null
 
   if (response.body) {
@@ -121,21 +162,18 @@ async function readGenerationStream(
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
-      const chunkPayload = processBuffer(lines.join('\n'))
+      const chunkPayload = processGenerationText(lines.join('\n'), onProgress)
       if (chunkPayload) payload = chunkPayload
     }
     if (buffer.trim()) {
-      const tailPayload = processBuffer(buffer)
+      const tailPayload = processGenerationText(buffer, onProgress)
       if (tailPayload) payload = tailPayload
     }
   } else {
-    payload = processBuffer(await response.text())
+    payload = processGenerationText(await response.text(), onProgress)
   }
 
-  if (!payload) {
-    throw new Error('The generation stream ended without a result.')
-  }
-  return buildGenerateResponse(payload)
+  return parseGenerationPayload(payload)
 }
 
 export const callGenerate = async (
@@ -160,16 +198,12 @@ export const callGenerate = async (
       formData.append('excelOptions', JSON.stringify(request.excelOptions))
     }
 
-    const response = await fetch(`${baseUrl}/api/generate-upload`, {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!response.ok) {
-      throw new Error(extractErrorMessage(response.status, await response.text()))
-    }
-
-    return readGenerationStream(response, onProgress)
+    const text = await uploadForGenerationText(
+      `${baseUrl}/api/generate-upload`,
+      formData,
+      onProgress
+    )
+    return parseGenerationPayload(processGenerationText(text, onProgress))
   }
 
   const response = await fetch(`${baseUrl}/api/generate`, {

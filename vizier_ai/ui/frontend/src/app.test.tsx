@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { Notifications, notificationsStore } from '@mantine/notifications'
 import type { InsightCandidate } from './domain/types'
@@ -81,6 +81,23 @@ const generate = async () => {
   fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
   await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
 }
+
+it('maps upload progress events to the progress bar', async () => {
+  let emitEvent: (event: never) => void = () => {}
+  callGenerateMock.mockImplementation(
+    (_request: unknown, onProgress?: (event: never) => void) => {
+      emitEvent = onProgress ?? (() => {})
+      return new Promise(() => {})
+    }
+  )
+  renderApp()
+  await generate()
+
+  act(() => {
+    emitEvent({ type: 'upload', fraction: 0.5 } as never)
+  })
+  expect(screen.getByText('Uploading data… 50%')).toBeInTheDocument()
+})
 
 it('renders the studio shell with rail, panel, and empty state', () => {
   renderApp()

@@ -22,6 +22,7 @@ interface GenerationProgressState {
   label: string
   chartIndex?: number
   chartTotal?: number
+  uploadFraction?: number
 }
 
 /** Pipeline events map to progress phases; the component creeps smoothly
@@ -29,6 +30,12 @@ interface GenerationProgressState {
  * extraction, insight generation) are the long phases. */
 const progressForEvent = (event: GenerationEvent): GenerationProgressState => {
   switch (event.type) {
+    case 'upload':
+      return {
+        phase: 'upload',
+        label: `Uploading data… ${Math.round(event.fraction * 100)}%`,
+        uploadFraction: event.fraction,
+      }
     case 'prepare':
       return {
         phase: 'schema',
@@ -177,6 +184,7 @@ function Studio() {
           label={progress.label}
           chartIndex={progress.chartIndex}
           chartTotal={progress.chartTotal}
+          uploadFraction={progress.uploadFraction}
           onFinished={() => setProgress(null)}
         />
       ) : null}
