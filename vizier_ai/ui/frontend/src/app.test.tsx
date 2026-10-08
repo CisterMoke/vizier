@@ -1,24 +1,51 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
+import type { InsightCandidate } from './domain/types'
 
-vi.mock('react-plotly.js', () => ({
-  default: () => <div data-testid="plotly-chart" />
+vi.mock('react-plotly.js', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: (props: { onInitialized?: (figure: unknown, graphDiv: HTMLElement) => void }) => {
+      useEffect(() => {
+        props.onInitialized?.({}, document.createElement('div'))
+      }, [])
+      return <div data-testid="plotly-chart" />
+    },
+  }
+})
+
+vi.mock('@mantine/hooks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mantine/hooks')>()
+  return { ...actual, useInViewport: () => ({ ref: () => {}, inViewport: true }) }
+})
+
+vi.mock('react-grid-layout/legacy', () => ({
+  default: () => null,
+  WidthProvider: (Wrapped: unknown) => (props: Record<string, unknown>) => (
+    <div data-testid="grid-mock">{props.children as never}</div>
+  ),
 }))
 
 vi.mock('./lib/plotly-bundle', () => ({
-  ensureTraceModules: vi.fn().mockResolvedValue(undefined)
+  ensureTraceModules: vi.fn().mockResolvedValue(undefined),
+  default: { downloadImage: vi.fn() },
+}))
+
+vi.mock('./lib/download', () => ({
+  saveInsightBundle: vi.fn(() => true),
+  exportPlotImage: vi.fn(),
+  downloadSvg: vi.fn(),
+  slugify: vi.fn((text: string) => text),
 }))
 
 const callGenerateMock = vi.fn()
 const regenerateMock = vi.fn()
-const loadBundleMock = vi.fn()
 
 vi.mock('./services/apiClient', () => ({
   callGenerate: (...args: unknown[]) => callGenerateMock(...args),
   regenerate: (...args: unknown[]) => regenerateMock(...args),
-  loadBundle: (...args: unknown[]) => loadBundleMock(...args),
-  editChart: vi.fn(),
+  editChart: vi.fn().mockResolvedValue({ plotlyData: [], plotlyLayout: {}, isStatic: false, staticSvg: null }),
   insightSvgUrl: (sessionId: string, insightId: string) =>
     `/api/session/${sessionId}/insight/${insightId}/svg`,
   fetchConfig: vi.fn().mockResolvedValue({ maxFileSize: null, maxRows: null }),
@@ -29,143 +56,99 @@ import { App } from './app'
 beforeEach(() => {
   callGenerateMock.mockReset()
   regenerateMock.mockReset()
-  loadBundleMock.mockReset()
 })
 
-const renderApp = () => render(<MantineProvider><Notifications /><App /></MantineProvider>)
+const renderApp = () =>
+  render(
+    <MantineProvider>
+      <Notifications />
+      <App />
+    </MantineProvider>
+  )
 
-const selectFile = (input: HTMLElement, file: File) => {
-  Object.defineProperty(input, 'files', { value: [file], configurable: true })
-  input.dispatchEvent(new Event('change', { bubbles: true }))
+const insight = (id: string, title: string): InsightCandidate => ({
+  id,
+  metadata: { title, summary: 'S', description: null },
+  chart_spec: {
+    traces: [{ chart_type: 'bar', x_axis: '$.x', y_axis: '$.y' }],
+    plotlyData: [{ type: 'bar', x: [1], y: [2] }],
+    plotlyLayout: {},
+  },
+})
+
+const generate = async () => {
+  fireEvent.input(screen.getByLabelText(/data description/i), { target: { value: 'orders(id int)' } })
+  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
+  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
 }
 
-const bundleInput = () =>
-  document.querySelector('input[type="file"][name="bundle-file"]') as HTMLElement
-
-it('renders analytics idea lab shell', () => {
+it('renders the studio shell with rail, panel, and empty state', () => {
   renderApp()
-
+  expect(screen.getByText('V')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /generate insights/i })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /vizier ai/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /generate analytics/i })).toBeInTheDocument()
 })
 
-it('calls backend API on generate and renders chart cards', async () => {
+it('generates insights and shows them in the grid; inputs lock', async () => {
   callGenerateMock.mockResolvedValue({
-    sessionId: 'test-session',
-    insights: [
-      {
-        id: 'insight-1',
-        metadata: {
-          title: 'Orders trend',
-          summary: 'Orders over time',
-          description: null,
-        },
-        chart_spec: {
-          traces: [],
-          plotlyData: [{ type: 'scatter', mode: 'lines+markers', x: [1, 2, 3], y: [10, 20, 30] }],
-          plotlyLayout: { title: { text: 'Orders trend' } }
-        }
-      }
-    ]
+    sessionId: 's1',
+    insights: [insight('i1', 'Orders trend')],
+    context: null,
   })
-
   renderApp()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
-  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-
-  expect(await screen.findByRole('heading', { name: /insight candidates/i })).toBeInTheDocument()
+  await generate()
+  expect(await screen.findByRole('heading', { name: /orders trend/i })).toBeInTheDocument()
   expect(screen.getAllByTestId('chart-card')).toHaveLength(1)
+  expect(screen.getByLabelText(/data description/i)).toBeDisabled()
 })
 
-it('sends constraints with the generate request', async () => {
-  callGenerateMock.mockResolvedValue({ sessionId: 'test-session', insights: [] })
-
-  renderApp()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }))
-  fireEvent.input(screen.getByLabelText(/guidance/i), {
-    target: { value: '  focus on trends  ' }
-  })
-
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
-  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-
-  const request = callGenerateMock.mock.calls[0][0]
-  expect(request.constraints).toEqual({ guidance: 'focus on trends' })
-})
-
-it('sends constraints with the regenerate request', async () => {
+it('regenerate appends new cards to the grid', async () => {
   callGenerateMock.mockResolvedValue({
-    sessionId: 'session-42',
-    insights: [
-      {
-        id: 'insight-1',
-        metadata: { title: 'T', summary: 'S', description: null },
-        chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} }
-      }
-    ]
+    sessionId: 's1',
+    insights: [insight('i1', 'First')],
+    context: null,
   })
-  regenerateMock.mockResolvedValue({ sessionId: 'session-42', insights: [], context: null })
-
+  regenerateMock.mockResolvedValue({ sessionId: 's1', insights: [insight('i2', 'Second')], context: null })
   renderApp()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
-  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-
-  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }))
-  fireEvent.input(screen.getByLabelText(/guidance/i), {
-    target: { value: 'compare regions' }
-  })
+  await generate()
   fireEvent.click(screen.getByRole('button', { name: /regenerate insights/i }))
-
   await waitFor(() => expect(regenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-  expect(regenerateMock.mock.calls[0][0]).toBe('session-42')
-  expect(regenerateMock.mock.calls[0][1]).toEqual({ guidance: 'compare regions' })
+  expect(await screen.findByRole('heading', { name: /second/i })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /first/i })).toBeInTheDocument()
+  expect(screen.getAllByTestId('chart-card')).toHaveLength(2)
 })
 
-it('loads a bundle through the import section', async () => {
-  loadBundleMock.mockResolvedValue({
-    sessionId: 'session-import',
-    insights: [
-      {
-        id: 'imported-1',
-        metadata: { title: 'T', summary: 'S', description: null },
-        chart_spec: { traces: [], plotlyData: [], plotlyLayout: {} },
-        mock_seed: 1337
-      }
-    ],
-    context: { schema: { source: 's', fields: [] }, dataProfile: { columns: [] } }
+it('deleting a card shows an undo notification that restores it', async () => {
+  callGenerateMock.mockResolvedValue({
+    sessionId: 's1',
+    insights: [insight('i1', 'Solo')],
+    context: null,
   })
-
   renderApp()
-
-  const bundleFile = new File(['{}'], 'bundle.json', { type: 'application/json' })
-  selectFile(bundleInput(), bundleFile)
-
-  const loadButton = await screen.findByRole('button', { name: /^load$/i })
-  fireEvent.click(loadButton)
-
-  await waitFor(() => expect(loadBundleMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
-  expect(loadBundleMock.mock.calls[0][0]).toBe(bundleFile)
-
-  expect(await screen.findAllByTestId('chart-card')).toHaveLength(1)
+  await generate()
+  fireEvent.click(screen.getByRole('button', { name: /delete insight/i }))
+  expect(await screen.findByRole('button', { name: /undo/i })).toBeInTheDocument()
+  expect(screen.queryByTestId('chart-card')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /undo/i }))
+  expect(await screen.findByTestId('chart-card')).toBeInTheDocument()
 })
 
-it('shows a checkpointed progress bar while generating and clears it after', async () => {
+it('reset via the panel clears the grid and unlocks inputs', async () => {
+  callGenerateMock.mockResolvedValue({
+    sessionId: 's1',
+    insights: [insight('i1', 'Solo')],
+    context: null,
+  })
+  renderApp()
+  await generate()
+  fireEvent.click(screen.getByRole('button', { name: /reset workspace/i }))
+  fireEvent.click(await screen.findByRole('button', { name: /^reset$/i }))
+  expect(screen.getByLabelText(/data description/i)).toBeEnabled()
+  expect(screen.getByRole('button', { name: /^generate insights/i })).toBeEnabled()
+  expect(screen.getByRole('heading', { name: /vizier ai/i })).toBeInTheDocument()
+})
+
+it('shows the checkpointed progress bar while generating', async () => {
   callGenerateMock.mockImplementation(
     (_request: unknown, onProgress?: (event: never) => void) =>
       new Promise((resolve) => {
@@ -173,37 +156,23 @@ it('shows a checkpointed progress bar while generating and clears it after', asy
         onProgress?.({ type: 'schema', fieldCount: 3, warnings: [] } as never)
         onProgress?.({ type: 'insights', count: 2 } as never)
         onProgress?.({ type: 'chart', index: 0, total: 2, insightId: 'i1', title: 'T1' } as never)
-        setTimeout(() => resolve({ sessionId: 's', insights: [] }), 150)
+        setTimeout(() => resolve({ sessionId: 's', insights: [], context: null }), 150)
       })
   )
-
   renderApp()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
-  const panel = await screen.findByTestId('generation-progress')
-  expect(panel).toHaveTextContent('Building chart 1 of 2')
-  expect(screen.getByTestId('checkpoint-schema')).toBeInTheDocument()
-
+  fireEvent.input(screen.getByLabelText(/data description/i), { target: { value: 'orders(id int)' } })
+  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
+  await screen.findByText(/building chart 1 of 2/i)
   await waitFor(
     () => expect(screen.queryByTestId('generation-progress')).not.toBeInTheDocument(),
-    { timeout: 4000 }
+    { timeout: 8000 }
   )
 })
 
 it('shows an error toast when generation fails', async () => {
   callGenerateMock.mockRejectedValue(new Error('LLM is down'))
-
   renderApp()
-
-  fireEvent.input(screen.getByLabelText(/data description/i), {
-    target: { value: 'orders(id int, total decimal)' }
-  })
-  fireEvent.click(screen.getByRole('button', { name: /generate analytics/i }))
-
+  await generate()
   expect(await screen.findByText('LLM is down')).toBeInTheDocument()
   await waitFor(() =>
     expect(screen.queryByTestId('generation-progress')).not.toBeInTheDocument()

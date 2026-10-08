@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
-import GridLayout, { WidthProvider } from 'react-grid-layout'
+import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { useWorkspace } from '../store/workspace'
 import { GRID_COLS, MIN_H, MIN_W, sanitizeLayout, type LayoutItem } from '../domain/layout'
 import { InsightCard } from './InsightCard'
 
-const SizedGrid = WidthProvider(GridLayout)
+const SizedGrid = WidthProvider(ReactGridLayout)
 
 const ROW_HEIGHT = 80
 const MARGIN: [number, number] = [16, 16]
@@ -34,7 +34,7 @@ export function InsightGrid({ onEditOpen, onDelete }: InsightGridProps) {
       rowHeight={ROW_HEIGHT}
       margin={MARGIN}
       layout={layout}
-      onLayoutChange={(next) => workspace.setLayout(next as LayoutItem[])}
+      onLayoutChange={(next: readonly LayoutItem[]) => workspace.setLayout(next as LayoutItem[])}
       compactType="vertical"
       preventCollision={false}
       draggableHandle=".grid-drag-handle"

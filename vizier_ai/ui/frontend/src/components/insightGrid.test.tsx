@@ -8,7 +8,7 @@ const mockState = vi.hoisted(() => ({
   emitLayout: [] as Array<{ i: string; x: number; y: number; w: number; h: number }>,
 }))
 
-vi.mock('react-grid-layout', () => ({
+vi.mock('react-grid-layout/legacy', () => ({
   default: () => null,
   WidthProvider: (Wrapped: unknown) => {
     const Grid = (props: Record<string, unknown>) => (
