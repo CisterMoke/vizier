@@ -40,6 +40,22 @@ const SLOW_CREEP_TAU_MS = 20_000
 const creepTauMs = (phase: GenerationPhase): number =>
   phase === 'schema' || phase === 'insights' ? SLOW_CREEP_TAU_MS : CREEP_TAU_MS
 
+/** Ceiling the fill creeps toward while a phase is pending: 80% of the
+ * way from the last earned position to the next checkpoint. The bar
+ * visibly stalls short of the checkpoint, so earning it stays obvious —
+ * and a slow phase never looks "almost done". */
+export const CREEP_GAP_FRACTION = 0.8
+
+export const creepTarget = (
+  phase: GenerationPhase,
+  chartIndex?: number,
+  chartTotal?: number
+): number => {
+  const reached = reachedPosition(phase, chartIndex, chartTotal)
+  const target = targetPosition(phase, chartIndex, chartTotal)
+  return reached + (target - reached) * CREEP_GAP_FRACTION
+}
+
 /** Finishing is certain: ease out to 100% quickly instead of creeping. */
 const FINISH_DURATION_MS = 450
 const FADE_DURATION_MS = 250
@@ -115,11 +131,11 @@ export function GenerationProgress({
   const fillRef = useRef<HTMLDivElement>(null)
   const pctRef = useRef<HTMLDivElement>(null)
   const displayRef = useRef(0)
-  const targetRef = useRef(targetPosition(phase, chartIndex, chartTotal))
+  const targetRef = useRef(creepTarget(phase, chartIndex, chartTotal))
   const finishedRef = useRef(false)
   const [closing, setClosing] = useState(false)
 
-  targetRef.current = targetPosition(phase, chartIndex, chartTotal)
+  targetRef.current = creepTarget(phase, chartIndex, chartTotal)
 
   useEffect(() => {
     if (phase !== 'done') {
@@ -161,7 +177,7 @@ export function GenerationProgress({
         }
       } else {
         // uncertainty: exponential approach — asymptotic creep toward
-        // the next checkpoint, never quite reaching it
+        // 80% of the gap to the next checkpoint, stalling visibly short
         const current = displayRef.current
         const next = target - (target - current) * Math.exp(-dt / creepTauMs(phase))
         paint(next)

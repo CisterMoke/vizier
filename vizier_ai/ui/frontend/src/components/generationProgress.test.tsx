@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
-import { GenerationProgress } from './GenerationProgress'
+import { GenerationProgress, creepTarget } from './GenerationProgress'
 
 const renderProgress = (props: Parameters<typeof GenerationProgress>[0]) =>
   render(
@@ -57,5 +57,14 @@ describe('GenerationProgress', () => {
     renderProgress({ phase: 'done', label: 'Done', onFinished })
 
     await waitFor(() => expect(onFinished).toHaveBeenCalled(), { timeout: 3000 })
+  })
+
+  it('caps the asymptotic creep at 80% of the gap to the next checkpoint', () => {
+    expect(creepTarget('prepare')).toBe(20)
+    expect(creepTarget('schema')).toBe(20)
+    expect(creepTarget('insights')).toBe(45)
+    expect(creepTarget('charts')).toBe(70)
+    expect(creepTarget('charts', 0, 2)).toBeCloseTo(62.5)
+    expect(creepTarget('done')).toBe(100)
   })
 })
