@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
-import { Notifications } from '@mantine/notifications'
+import { Notifications, notificationsStore } from '@mantine/notifications'
 import type { InsightCandidate } from './domain/types'
 
 vi.mock('react-plotly.js', async () => {
@@ -141,6 +141,7 @@ it('undoing one delete keeps the other undo toast available', async () => {
   })
   renderApp()
   await generate()
+  await screen.findAllByTestId('chart-card')
   fireEvent.click(screen.getAllByRole('button', { name: /delete insight/i })[0])
   await screen.findByRole('button', { name: /undo/i })
   fireEvent.click(screen.getAllByRole('button', { name: /delete insight/i })[0])
@@ -149,7 +150,17 @@ it('undoing one delete keeps the other undo toast available', async () => {
 
   fireEvent.click(undoToasts[0])
   expect(await screen.findAllByTestId('chart-card')).toHaveLength(1)
-  expect(screen.getByRole('button', { name: /undo/i })).toBeInTheDocument()
+
+  // Only the undone card's toast is removed from the store; the other
+  // stays available and functional. (Exiting toasts linger in the DOM in
+  // jsdom — no transitionend — so the store is the source of truth here.)
+  expect(notificationsStore.getState().notifications).toHaveLength(1)
+  const otherUndo = screen
+    .getAllByRole('button', { name: /undo/i })
+    .find((btn) => btn !== undoToasts[0])
+  expect(otherUndo).toBeDefined()
+  fireEvent.click(otherUndo as HTMLElement)
+  expect(await screen.findAllByTestId('chart-card')).toHaveLength(2)
 })
 
 it('reset via the panel clears the grid and unlocks inputs', async () => {
