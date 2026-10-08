@@ -66,9 +66,39 @@ const showError = (title: string, message: string) => {
   })
 }
 
+const strokeIconProps = {
+  width: 20,
+  height: 20,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const
+
+/** Studio: a 2x2 insight mosaic. */
+const StudioIcon = () => (
+  <svg {...strokeIconProps} aria-hidden="true">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </svg>
+)
+
+/** Dashboard: panels view for a future report page. */
+const DashboardIcon = () => (
+  <svg {...strokeIconProps} aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M9 9v11" />
+  </svg>
+)
+
 const VIEWS: ViewItem[] = [
-  { id: 'studio', label: 'Studio', icon: <span>St</span> },
-  { id: 'sandbox', label: 'Sandbox', icon: <span>Sb</span>, disabled: true },
+  { id: 'studio', label: 'Studio', icon: <StudioIcon /> },
+  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon />, disabled: true },
 ]
 
 function Studio() {

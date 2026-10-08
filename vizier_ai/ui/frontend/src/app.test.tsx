@@ -99,6 +99,16 @@ it('maps upload progress events to the progress bar', async () => {
   expect(screen.getByText('Uploading data… 50%')).toBeInTheDocument()
 })
 
+it('labels the placeholder view Dashboard and draws svg icons for rail views', async () => {
+  renderApp()
+  const rail = screen.getByRole('navigation', { name: 'Views' })
+  expect(rail.querySelectorAll('svg')).toHaveLength(2)
+
+  fireEvent.click(rail.querySelectorAll('button')[0])
+  expect(await screen.findByText('Dashboard')).toBeInTheDocument()
+  expect(screen.queryByText('Sandbox')).not.toBeInTheDocument()
+})
+
 it('renders the studio shell with rail, panel, and empty state', () => {
   renderApp()
   expect(screen.getByText('V')).toBeInTheDocument()
