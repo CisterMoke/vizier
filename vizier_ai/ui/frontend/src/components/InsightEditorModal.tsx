@@ -3,7 +3,7 @@ import {
   Button, Checkbox, Group, Modal, SegmentedControl, Select, Stack, Text, TextInput,
 } from '@mantine/core'
 import type { DatasetSchema, InsightCandidate, TraceSpec } from '../domain/types'
-import { applyTraceEdit, filterValueAsString, type InsightEdit, type TraceEdit } from '../domain/chartEdit'
+import { applyTraceEdit, filterValueAsString, type TraceEdit } from '../domain/chartEdit'
 import { useWorkspace } from '../store/workspace'
 import { editChart, type EditChartResult } from '../services/apiClient'
 
