@@ -30,3 +30,4 @@ node_modules
 todo.txt
 .playwright-cli/
 .playwright/
+examples/
