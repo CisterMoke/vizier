@@ -120,6 +120,17 @@ describe('GenerationProgress', () => {
     expect(creepTarget('charts', 1, 2)).toBeCloseTo(80)
   })
 
+  it('jumps to the earned checkpoint when a phase completes', async () => {
+    const view = renderProgress({ phase: 'schema', label: 'Extracting schema…' })
+    await waitFor(() => expect(fillWidth()).toBeGreaterThan(20), { timeout: 2000 })
+    expect(fillWidth()).toBeLessThan(40)
+
+    rerenderProgress(view.rerender, { phase: 'insights', label: 'Generating insights…' })
+
+    // the schema checkpoint is earned: the fill snaps to it, then creeps on
+    await waitFor(() => expect(fillWidth()).toBeGreaterThanOrEqual(40), { timeout: 150 })
+  })
+
   it('never creeps backwards: the fill is monotonic within a run', () => {
     // upload finished at 25%, the schema phase's ceiling is lower (20%)
     expect(creepStep(25, 20, 20_000, 100)).toBe(25)

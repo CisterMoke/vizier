@@ -3,6 +3,7 @@ import { Badge, Skeleton, Stack } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import type { InsightEdit } from '../domain/chartEdit'
 import PlotlyComponent from 'react-plotly.js'
+import Plotly from '../lib/plotly-bundle'
 import { ensureTraceModules } from '../lib/plotly-bundle'
 import { insightSvgUrl } from '../services/apiClient'
 
@@ -30,6 +31,7 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
     typeof IntersectionObserver === 'undefined' ? true : null
   )
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const graphDivRef = useRef<HTMLElement | null>(null)
   const [modulesReady, setModulesReady] = useState(false)
 
   const plotlyData = edit?.plotlyData ?? insight.chart_spec.plotlyData ?? null
@@ -80,6 +82,21 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
     return () => observer.disconnect()
   }, [])
 
+  // react-plotly.js's useResizeHandler and plotly's config.responsive both
+  // only listen for WINDOW resizes — but grid cells resize through pure CSS
+  // while dragging. Observe the cell's chart container and re-fit the plot
+  // via Plotly.Plots.resize whenever its box changes.
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const node = viewportRef.current
+    if (!node) return
+    const observer = new ResizeObserver(() => {
+      if (graphDivRef.current) Plotly.Plots.resize(graphDivRef.current)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     return () => onGraphDivChange?.(null)
   }, [onGraphDivChange])
@@ -113,7 +130,10 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
             config={PLOT_CONFIG}
             style={PLOT_STYLE}
             useResizeHandler
-            onInitialized={(_figure, graphDiv) => onGraphDivChange?.(graphDiv)}
+            onInitialized={(_figure, graphDiv) => {
+              graphDivRef.current = graphDiv
+              onGraphDivChange?.(graphDiv)
+            }}
           />
         ) : (
           <Skeleton height="100%" radius="md" />

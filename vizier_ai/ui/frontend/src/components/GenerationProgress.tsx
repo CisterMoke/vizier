@@ -195,10 +195,12 @@ export function GenerationProgress({
   const pctRef = useRef<HTMLDivElement>(null)
   const displayRef = useRef(0)
   const targetRef = useRef(creepTarget(phase, chartIndex, chartTotal, uploadFraction))
+  const reachedRef = useRef(reachedPosition(phase, chartIndex, chartTotal, uploadFraction))
   const finishedRef = useRef(false)
   const [closing, setClosing] = useState(false)
 
   targetRef.current = creepTarget(phase, chartIndex, chartTotal, uploadFraction)
+  reachedRef.current = reachedPosition(phase, chartIndex, chartTotal, uploadFraction)
 
   useEffect(() => {
     if (phase !== 'done') {
@@ -256,11 +258,16 @@ export function GenerationProgress({
         // uncertainty: exponential approach — asymptotic creep toward
         // 80% of the gap to the next checkpoint, stalling visibly short
         const current = displayRef.current
-        const next = creepStep(
-          current,
-          target,
-          phase === 'upload' ? UPLOAD_TRACK_TAU_MS : creepTauMs(phase),
-          dt
+        // a completed phase is earned: the fill snaps up to the
+        // checkpoint it just reached before creeping on toward the next
+        const next = Math.max(
+          reachedRef.current,
+          creepStep(
+            current,
+            target,
+            phase === 'upload' ? UPLOAD_TRACK_TAU_MS : creepTauMs(phase),
+            dt
+          )
         )
         paint(next)
       }

@@ -3,10 +3,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import { InsightChart } from './InsightChart'
+import Plotly from '../lib/plotly-bundle'
 
 const state = vi.hoisted(() => ({
   intersecting: null as boolean | null,
   instances: [] as Array<{ deliver: (entries: Array<{ isIntersecting: boolean }>) => void }>,
+  resizeObservers: [] as Array<{ deliver: () => void }>,
   plotRenders: [] as Array<{ data: unknown; layout: unknown; config: unknown }>,
 }))
 
@@ -26,6 +28,18 @@ class IntersectionObserverStub {
 }
 vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
 
+class ResizeObserverStub {
+  callback: () => void
+  constructor(callback: () => void) {
+    this.callback = callback
+    state.resizeObservers.push({ deliver: () => this.callback() })
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+
 vi.mock('react-plotly.js', () => ({
   default: (props: {
     data: Array<{ type?: string }>
@@ -41,6 +55,7 @@ vi.mock('react-plotly.js', () => ({
 
 vi.mock('../lib/plotly-bundle', () => ({
   ensureTraceModules: vi.fn().mockResolvedValue(undefined),
+  default: { Plots: { resize: vi.fn() } },
 }))
 
 vi.mock('../services/apiClient', () => ({
@@ -80,7 +95,23 @@ const renderChart = (insight: InsightCandidate, edit = null, onGraphDivChange?: 
 beforeEach(() => {
   state.intersecting = null
   state.instances.length = 0
+  state.resizeObservers.length = 0
   state.plotRenders.length = 0
+  vi.mocked(Plotly.Plots.resize).mockClear()
+})
+
+it('resizes the plot when its cell container changes size', async () => {
+  state.intersecting = true
+  const onGraphDivChange = vi.fn()
+  renderChart(liveInsight, null, onGraphDivChange)
+
+  await screen.findByTestId('plotly-chart')
+  expect(state.resizeObservers.length).toBeGreaterThan(0)
+
+  state.resizeObservers.forEach((observer) => observer.deliver())
+
+  const graphDiv = onGraphDivChange.mock.calls[0]?.[0] as HTMLElement
+  expect(Plotly.Plots.resize).toHaveBeenCalledWith(graphDiv)
 })
 
 it('mounts a live plot for in-viewport cards and reports the graph div', async () => {
