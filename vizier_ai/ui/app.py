@@ -346,7 +346,12 @@ async def regenerate(request: RegenerateRequest) -> StreamingResponse:
     real_data = session.get("real_data")
 
     def on_result(result):
-        _set_session_insights(request.session_id, _recipe_only(result.insights))
+        # the client appends regenerate results as new cards, so earlier
+        # insights must stay on the session — their server-rendered SVGs
+        # are still fetched by static cards
+        session = _get_session(request.session_id)
+        previous = session.get("insights", []) if session else []
+        _set_session_insights(request.session_id, previous + _recipe_only(result.insights))
         _set_session_schema(request.session_id, result.dataset_schema)
         response = InsightsResponse.model_validate(
             dict(

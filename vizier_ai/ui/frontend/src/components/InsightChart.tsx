@@ -25,11 +25,12 @@ interface InsightChartProps {
 }
 
 export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: InsightChartProps) {
-  // null = not yet observed: keep a skeleton so out-of-viewport thumbnails
-  // (a server-side kaleido render) are never fetched speculatively on mount
-  const [viewState, setViewState] = useState<boolean | null>(() =>
-    typeof IntersectionObserver === 'undefined' ? true : null
-  )
+  // Sticky viewport latch: a plot mounts only once its card has been seen
+  // in the viewport, then stays mounted. Cards never observed in view keep
+  // a skeleton — no speculative plotly mounts and no server-side kaleido
+  // thumbnail fetches, which 404 for live insights and cost a headless
+  // render each.
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined')
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const graphDivRef = useRef<HTMLElement | null>(null)
   const [modulesReady, setModulesReady] = useState(false)
@@ -76,7 +77,7 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
     if (!node) return
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[entries.length - 1]
-      setViewState(entry?.isIntersecting ?? false)
+      if (entry?.isIntersecting) setSeen(true)
     }, { rootMargin: '100px' })
     observer.observe(node)
     return () => observer.disconnect()
@@ -85,13 +86,23 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
   // react-plotly.js's useResizeHandler and plotly's config.responsive both
   // only listen for WINDOW resizes — but grid cells resize through pure CSS
   // while dragging. Observe the cell's chart container and re-fit the plot
-  // via Plotly.Plots.resize whenever its box changes.
+  // via Plotly.Plots.resize whenever its box changes. The guard skips
+  // mid-unmount races (detached div) and plotly's rejection for
+  // not-yet-displayed divs.
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return
     const node = viewportRef.current
     if (!node) return
     const observer = new ResizeObserver(() => {
-      if (graphDivRef.current) Plotly.Plots.resize(graphDivRef.current)
+      const graphDiv = graphDivRef.current
+      if (!graphDiv || !graphDiv.isConnected) return
+      try {
+        ;(Plotly.Plots.resize(graphDiv) as unknown as Promise<void> | undefined)?.catch?.(
+          () => undefined
+        )
+      } catch {
+        // plotly throws synchronously for non-displayed divs in some paths
+      }
     })
     observer.observe(node)
     return () => observer.disconnect()
@@ -116,14 +127,7 @@ export function InsightChart({ insight, edit, sessionId, onGraphDivChange }: Ins
               Static preview
             </Badge>
           </Stack>
-        ) : viewState === false ? (
-          <img
-            src={insightSvgUrl(sessionId, insight.id)}
-            alt={insight.metadata.title}
-            data-testid="chart-thumbnail"
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-          />
-        ) : modulesReady && viewState === true ? (
+        ) : modulesReady && seen ? (
           <Plot
             data={plotlyData as Plotly.Data[]}
             layout={plotLayout}

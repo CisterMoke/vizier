@@ -166,6 +166,41 @@ class TestConstraintsEndpoints:
         assert response.status_code == 200
         assert captured[0]["constraints"] == InsightConstraints(exclude_chart_types=["pie"])
 
+    def test_regenerate_keeps_previous_session_insights(self, client, captured, monkeypatch):
+        """The client appends regenerate results as new cards, so insights
+        from earlier runs must stay resolvable on the session (their
+        server-rendered SVGs are fetched by static cards)."""
+        from vizier_ai.ui import app as app_module
+        from vizier_ai.ui.sessions import _create_session
+
+        def make_insight(insight_id: str) -> Insight:
+            return Insight(
+                id=insight_id,
+                metadata=InsightMetadata(title=insight_id, summary="s"),
+                chart_spec=ChartSpec(
+                    traces=[TraceSpec(chart_type="bar", x_axis="$.x", y_axis="$.y")],
+                    plotlyData=[{"type": "bar", "x": [1], "y": [2]}],
+                    plotlyLayout={},
+                ),
+            )
+
+        rows = {"rowCount": 1, "rows": [{"x": "a", "y": 1}]}
+        session_id = _create_session(rows, "orders")
+
+        patch_vizier(monkeypatch, result=Insights(insights=[make_insight("old_chart")]))
+        response = client.post("/api/regenerate", json={"sessionId": session_id})
+        assert response.status_code == 200
+        complete_payload(response)
+
+        patch_vizier(monkeypatch, result=Insights(insights=[make_insight("new_chart")]))
+        response = client.post("/api/regenerate", json={"sessionId": session_id})
+        assert response.status_code == 200
+        complete_payload(response)
+
+        monkeypatch.setattr(app_module.static_render, "render_static_svg", lambda spec: b"<svg/>")
+        svg = client.get(f"/api/session/{session_id}/insight/old_chart/svg")
+        assert svg.status_code == 200
+
     def test_unsatisfiable_constraints_stream_error_event(self, client, captured, monkeypatch):
         from vizier_ai.core import UnsatisfiableConstraintsError
 

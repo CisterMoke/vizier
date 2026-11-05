@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import type { InsightCandidate } from '../domain/types'
 import { InsightChart } from './InsightChart'
@@ -48,7 +48,9 @@ vi.mock('react-plotly.js', () => ({
     onInitialized?: (figure: unknown, graphDiv: HTMLElement) => void
   }) => {
     state.plotRenders.push({ data: props.data, layout: props.layout, config: props.config })
-    props.onInitialized?.({}, document.createElement('div'))
+    const graphDiv = document.createElement('div')
+    document.body.appendChild(graphDiv)
+    props.onInitialized?.({}, graphDiv)
     return <div data-testid="plotly-chart" />
   },
 }))
@@ -130,13 +132,40 @@ it('renders the static svg for static insights and never mounts a plot', () => {
   expect(screen.getByText(/static preview/i)).toBeInTheDocument()
 })
 
-it('shows a thumbnail instead of a plot when out of viewport', () => {
+it('shows a skeleton when never in viewport, fetching no thumbnail', () => {
   state.intersecting = false
   renderChart(liveInsight)
-  expect(screen.getByRole('img', { name: /revenue/i }).getAttribute('src')).toBe(
-    '/api/session/s1/insight/ins-1/svg'
-  )
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
   expect(screen.queryByTestId('plotly-chart')).not.toBeInTheDocument()
+})
+
+it('keeps the plot mounted once seen, even when the card leaves the viewport', async () => {
+  state.intersecting = true
+  renderChart(liveInsight)
+  await screen.findByTestId('plotly-chart')
+
+  state.intersecting = false
+  await act(async () => {
+    state.instances.forEach((instance) => instance.deliver([{ isIntersecting: false }]))
+  })
+
+  expect(screen.getByTestId('plotly-chart')).toBeInTheDocument()
+})
+
+it('skips plotly resize once the plot div is detached', async () => {
+  state.intersecting = true
+  const onGraphDivChange = vi.fn()
+  const view = renderChart(liveInsight, null, onGraphDivChange)
+  await screen.findByTestId('plotly-chart')
+
+  state.resizeObservers.forEach((observer) => observer.deliver())
+  expect(Plotly.Plots.resize).toHaveBeenCalledTimes(1)
+
+  const graphDiv = onGraphDivChange.mock.calls[0]?.[0] as HTMLElement
+  view.unmount()
+  graphDiv.remove()
+  state.resizeObservers.forEach((observer) => observer.deliver())
+  expect(Plotly.Plots.resize).toHaveBeenCalledTimes(1)
 })
 
 it('prefers an edited static svg over the session endpoint', () => {
