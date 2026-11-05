@@ -19,13 +19,14 @@ interface Checkpoint {
 }
 
 /** Pipeline milestones in order, one per stage the user waits through
- * (data+schema, insights, charts, completion). The checkpoint dots are
- * spread evenly along the bar — one equal band per milestone — derived
- * from this single list. */
-const MILESTONES = ['schema', 'insights', 'charts', 'done'] as const
+ * (upload, parsing+schema, insights, charts, completion). The checkpoint
+ * dots are spread evenly along the bar — one equal band per milestone —
+ * derived from this single list. */
+const MILESTONES = ['upload', 'schema', 'insights', 'charts', 'done'] as const
 type Milestone = (typeof MILESTONES)[number]
 
 const MILESTONE_TITLES: Record<Milestone, string> = {
+  upload: 'Upload',
   schema: 'Schema',
   insights: 'Insights',
   charts: 'Charts',
@@ -79,7 +80,7 @@ export const creepTarget = (
   chartTotal?: number,
   uploadFraction?: number
 ): number => {
-  const reached = reachedPosition(phase, chartIndex, chartTotal)
+  const reached = reachedPosition(phase, chartIndex, chartTotal, uploadFraction)
   const target = targetPosition(phase, chartIndex, chartTotal, uploadFraction)
   const gapFraction = phase === 'upload' ? 1 : CREEP_GAP_FRACTION
   return reached + (target - reached) * gapFraction
@@ -97,14 +98,19 @@ const FADE_DURATION_MS = 250
 
 /** Progress earned so far: each phase transition means the previous
  * checkpoint's work completed. */
-const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal?: number): number => {
+const reachedPosition = (
+  phase: GenerationPhase,
+  chartIndex?: number,
+  chartTotal?: number,
+  uploadFraction?: number
+): number => {
   switch (phase) {
     case 'upload':
-      return 0
+      return milestonePosition('upload') * (uploadFraction ?? 0)
     case 'prepare':
-      return 0
+      return milestonePosition('upload')
     case 'schema':
-      return 0
+      return milestonePosition('upload')
     case 'insights':
       return bandStart('insights')
     case 'charts':
@@ -127,7 +133,7 @@ const targetPosition = (
 ): number => {
   switch (phase) {
     case 'upload':
-      return milestonePosition('schema') * (uploadFraction ?? 0)
+      return milestonePosition('upload') * (uploadFraction ?? 0)
     case 'prepare':
       return milestonePosition('schema')
     case 'schema':
@@ -146,15 +152,23 @@ const targetPosition = (
   }
 }
 
-const checkpointFilled = (checkpoint: Checkpoint, phase: GenerationPhase, chartIndex?: number, chartTotal?: number): boolean => {
-  const reached = reachedPosition(phase, chartIndex, chartTotal)
+const checkpointFilled = (
+  checkpoint: Checkpoint,
+  phase: GenerationPhase,
+  chartIndex?: number,
+  chartTotal?: number,
+  uploadFraction?: number
+): boolean => {
+  const reached = reachedPosition(phase, chartIndex, chartTotal, uploadFraction)
   return checkpoint.position <= reached + 0.01
 }
 
 const checkpointActive = (checkpoint: Checkpoint, phase: GenerationPhase): boolean => {
   switch (checkpoint.key) {
+    case 'upload':
+      return phase === 'upload'
     case 'schema':
-      return phase === 'upload' || phase === 'prepare' || phase === 'schema'
+      return phase === 'prepare' || phase === 'schema'
     case 'insights':
       return phase === 'insights'
     case 'charts':
@@ -193,15 +207,17 @@ export function GenerationProgress({
   }, [phase])
 
   // A new run can start while this instance is still mounted (the
-  // previous run's done-fade window): reset the fill and the finished
-  // latch so the bar starts from 0 and the next done phase still fires
-  // onFinished.
+  // previous run's done-fade window): reset the fill to the run's
+  // starting position — zero for uploads, the earned upload band for
+  // text-mode runs — and clear the finished latch so the next done phase
+  // still fires onFinished.
   useEffect(() => {
     if (phase !== 'upload' && phase !== 'prepare') return
-    displayRef.current = 0
+    const start = reachedPosition(phase, chartIndex, chartTotal, uploadFraction)
+    displayRef.current = start
     finishedRef.current = false
-    if (fillRef.current) fillRef.current.style.width = '0%'
-    if (pctRef.current) pctRef.current.textContent = '0%'
+    if (fillRef.current) fillRef.current.style.width = `${start}%`
+    if (pctRef.current) pctRef.current.textContent = `${Math.round(start)}%`
   }, [phase])
 
   useEffect(() => {
@@ -274,7 +290,7 @@ export function GenerationProgress({
               style={{ width: '0%' }}
             />
             {CHECKPOINTS.map((checkpoint) => {
-              const filled = checkpointFilled(checkpoint, phase, chartIndex, chartTotal)
+              const filled = checkpointFilled(checkpoint, phase, chartIndex, chartTotal, uploadFraction)
               const active = !filled && checkpointActive(checkpoint, phase)
               return (
                 <div

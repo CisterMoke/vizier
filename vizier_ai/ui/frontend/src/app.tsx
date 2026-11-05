@@ -129,7 +129,15 @@ function Studio() {
   const [columns, setColumns] = useState(2)
 
   const handleGenerate = async (request: GenerateRequest) => {
-    setProgress({ phase: 'prepare', label: 'Preparing data…' })
+    // file runs wait for real upload progress: no optimistic creeping
+    // ahead of the bytes. Text-mode requests leave instantly, so their
+    // upload band is earned from the start.
+    const isFileUpload = request.dataSource.mode === 'file' && Boolean(request.dataSource.file)
+    setProgress(
+      isFileUpload
+        ? { phase: 'upload', label: 'Uploading data… 0%', uploadFraction: 0 }
+        : { phase: 'prepare', label: 'Preparing data…' }
+    )
     setHasRealData(false)
     setIsGenerating(true)
     try {

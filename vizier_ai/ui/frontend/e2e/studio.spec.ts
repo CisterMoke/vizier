@@ -47,7 +47,9 @@ test('generate renders the mosaic and dragging a card moves it', async ({ page }
   await page.getByRole('button', { name: /generate insights/i }).click()
 
   const item = page.locator('.react-grid-item').first()
-  await expect(item).toBeVisible()
+  // the grid is a lazy chunk: under load (e.g. right after a full build)
+  // its first import can take longer than the default 5s
+  await expect(item).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: /orders trend/i })).toBeVisible()
 
   const before = await item.getAttribute('style')
@@ -68,7 +70,9 @@ test('the visible resize handle resizes a cell', async ({ page }) => {
   await page.getByRole('button', { name: /generate insights/i }).click()
 
   const item = page.locator('.react-grid-item').first()
-  await expect(item).toBeVisible()
+  // the grid is a lazy chunk: under load (e.g. right after a full build)
+  // its first import can take longer than the default 5s
+  await expect(item).toBeVisible({ timeout: 20_000 })
 
   const handle = page.locator('.grid-resize-handle').first()
   await expect(handle).toBeVisible()

@@ -23,20 +23,21 @@ const fillWidth = () =>
   parseFloat(screen.getByTestId('progress-fill').style.width)
 
 describe('GenerationProgress', () => {
-  it('renders the step label and four checkpoint dots', () => {
+  it('renders the step label and five checkpoint dots', () => {
     renderProgress({ phase: 'prepare', label: 'Preparing data…' })
 
     expect(screen.getByText('Preparing data…')).toBeInTheDocument()
+    expect(screen.getByTestId('checkpoint-upload')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-schema')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-insights')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-charts')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-done')).toBeInTheDocument()
   })
 
-  it('spreads the four checkpoints evenly along the bar', () => {
+  it('spreads the five checkpoints evenly along the bar', () => {
     renderProgress({ phase: 'prepare', label: 'Preparing data…' })
 
-    const positions = ['schema', 'insights', 'charts', 'done'].map((key) =>
+    const positions = ['upload', 'schema', 'insights', 'charts', 'done'].map((key) =>
       parseFloat(screen.getByTestId(`checkpoint-${key}`).style.left)
     )
     const band = 100 / positions.length
@@ -51,6 +52,7 @@ describe('GenerationProgress', () => {
     const filled = (key: string) =>
       screen.getByTestId(`checkpoint-${key}`).className.includes('bg-cyan-300')
 
+    expect(filled('upload')).toBe(true)
     expect(filled('schema')).toBe(true)
     expect(filled('insights')).toBe(true)
     expect(filled('charts')).toBe(false)
@@ -72,7 +74,7 @@ describe('GenerationProgress', () => {
   it('marks every checkpoint filled when done', () => {
     renderProgress({ phase: 'done', label: 'Done' })
 
-    for (const key of ['schema', 'insights', 'charts', 'done']) {
+    for (const key of ['upload', 'schema', 'insights', 'charts', 'done']) {
       expect(screen.getByTestId(`checkpoint-${key}`).className).toContain('bg-cyan-300')
     }
   })
@@ -84,28 +86,38 @@ describe('GenerationProgress', () => {
     await waitFor(() => expect(onFinished).toHaveBeenCalled(), { timeout: 3000 })
   })
 
-  it('tracks upload progress exactly within the schema band', () => {
+  it('tracks upload progress exactly within the upload band', () => {
     expect(creepTarget('upload', undefined, undefined, 0)).toBe(0)
-    expect(creepTarget('upload', undefined, undefined, 0.5)).toBe(12.5)
-    expect(creepTarget('upload', undefined, undefined, 1)).toBe(25)
+    expect(creepTarget('upload', undefined, undefined, 0.5)).toBe(10)
+    expect(creepTarget('upload', undefined, undefined, 1)).toBe(20)
   })
 
-  it('pulses the schema checkpoint while uploading', () => {
+  it('earns the upload checkpoint at full upload progress', () => {
+    renderProgress({ phase: 'upload', label: 'Uploading data… 100%', uploadFraction: 1 })
+    expect(screen.getByTestId('checkpoint-upload').className).toContain('bg-cyan-300')
+  })
+
+  it('pulses the upload checkpoint while uploading', () => {
     renderProgress({ phase: 'upload', label: 'Uploading data… 50%', uploadFraction: 0.5 })
+    expect(screen.getByTestId('checkpoint-upload').className).toContain('animate-pulse')
+  })
+
+  it('pulses the schema checkpoint while parsing rows and extracting schema', () => {
+    renderProgress({ phase: 'schema', label: 'Parsed 4 rows — extracting schema…' })
     expect(screen.getByTestId('checkpoint-schema').className).toContain('animate-pulse')
   })
 
   it('caps the asymptotic creep at 80% of the gap to the next checkpoint', () => {
-    expect(creepTarget('prepare')).toBe(20)
-    expect(creepTarget('schema')).toBe(20)
-    expect(creepTarget('insights')).toBe(45)
+    expect(creepTarget('prepare')).toBe(36)
+    expect(creepTarget('schema')).toBe(36)
+    expect(creepTarget('insights')).toBe(56)
     expect(creepTarget('done')).toBe(100)
   })
 
   it('steps the charts band between the insights and charts checkpoints', () => {
-    expect(creepTarget('charts')).toBe(70)
-    expect(creepTarget('charts', 0, 2)).toBeCloseTo(62.5)
-    expect(creepTarget('charts', 1, 2)).toBeCloseTo(75)
+    expect(creepTarget('charts')).toBe(76)
+    expect(creepTarget('charts', 0, 2)).toBeCloseTo(70)
+    expect(creepTarget('charts', 1, 2)).toBeCloseTo(80)
   })
 
   it('never creeps backwards: the fill is monotonic within a run', () => {
@@ -122,7 +134,9 @@ describe('GenerationProgress', () => {
 
     rerenderProgress(view.rerender, { phase: 'prepare', label: 'Preparing data…' })
 
-    await waitFor(() => expect(fillWidth()).toBeLessThanOrEqual(10), { timeout: 300 })
+    // a text-mode run starts with the upload band already earned (20%)
+    await waitFor(() => expect(fillWidth()).toBeGreaterThanOrEqual(15), { timeout: 300 })
+    expect(fillWidth()).toBeLessThanOrEqual(30)
   })
 
   it('reports onFinished again for a second run', async () => {

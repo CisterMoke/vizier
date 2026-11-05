@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MantineProvider } from '@mantine/core'
 import { Notifications, notificationsStore } from '@mantine/notifications'
 import type { InsightCandidate } from './domain/types'
@@ -83,6 +84,27 @@ const generate = async () => {
   fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
   await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
 }
+
+it('starts file uploads at zero progress instead of creeping', async () => {
+  callGenerateMock.mockImplementation(
+    (_request: unknown, onProgress?: (event: never) => void) =>
+      new Promise(() => {
+        void onProgress
+      })
+  )
+  renderApp()
+
+  fireEvent.click(screen.getByLabelText(/real data source/i, { selector: 'input' }))
+  fireEvent.click(await screen.findByRole('option', { name: /file upload/i }))
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+  await userEvent.upload(fileInput, new File(['id,total\n1,2'], 'data.csv', { type: 'text/csv' }))
+  fireEvent.input(screen.getByLabelText(/data description/i), { target: { value: 'orders' } })
+  fireEvent.click(screen.getByRole('button', { name: /generate insights/i }))
+
+  await waitFor(() => expect(callGenerateMock).toHaveBeenCalledTimes(1), { timeout: 10000 })
+  expect(screen.getByText('Uploading data… 0%')).toBeInTheDocument()
+  expect(parseFloat(screen.getByTestId('progress-fill').style.width)).toBeLessThanOrEqual(2)
+})
 
 it('maps upload progress events to the progress bar', async () => {
   let emitEvent: (event: never) => void = () => {}
