@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { Button, Group, SegmentedControl, Text, VisuallyHidden } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { Layout, SquaresFour } from '@phosphor-icons/react'
 import type { GenerateRequest } from './domain/types'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
 import { rebuildLayout } from './domain/layout'
@@ -67,30 +68,13 @@ const showError = (title: string, message: string) => {
   })
 }
 
-const strokeIconProps = {
-  width: 20,
-  height: 20,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.5,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-} as const
-
-/** Studio: a 2x2 insight mosaic. */
-const StudioIcon = () => (
-  <svg {...strokeIconProps} aria-hidden="true">
-    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
-    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
-    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
-  </svg>
-)
-
-/** Column-count glyphs for the mosaic switcher. */
+/**
+ * Column-count glyphs for the mosaic switcher. Phosphor has no per-count
+ * column icons, so this stays a purpose-built diagram rendered in the
+ * same outline language as the Phosphor icons.
+ */
 const ColumnGlyph = ({ columns }: { columns: number }) => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
     {Array.from({ length: columns }).map((_, index) => (
       <rect
         key={index}
@@ -98,24 +82,15 @@ const ColumnGlyph = ({ columns }: { columns: number }) => (
         y={2}
         width={14 / columns - 1}
         height={12}
-        rx={1}
+        rx={1.5}
       />
     ))}
   </svg>
 )
 
-/** Dashboard: panels view for a future report page. */
-const DashboardIcon = () => (
-  <svg {...strokeIconProps} aria-hidden="true">
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <path d="M3 9h18" />
-    <path d="M9 9v11" />
-  </svg>
-)
-
 const VIEWS: ViewItem[] = [
-  { id: 'studio', label: 'Studio', icon: <StudioIcon /> },
-  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon />, disabled: true },
+  { id: 'studio', label: 'Studio', icon: <SquaresFour size={20} /> },
+  { id: 'dashboard', label: 'Dashboard', icon: <Layout size={20} />, disabled: true },
 ]
 
 function Studio() {

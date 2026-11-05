@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
+import { ArrowsOutSimple } from '@phosphor-icons/react'
 import { useWorkspace } from '../store/workspace'
 import { GRID_COLS, MIN_H, MIN_W, sanitizeLayout, type LayoutItem } from '../domain/layout'
 import { InsightCard } from './InsightCard'
@@ -21,19 +22,7 @@ const resizeHandle = (
     className="react-resizable-handle react-resizable-handle-se grid-resize-handle"
     data-testid="resize-handle"
   >
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M1.75 8.25 8.25 1.75" />
-      <path d="M1.75 5.25v3h3" />
-    </svg>
+    <ArrowsOutSimple size={10} aria-hidden="true" />
   </span>
 )
 

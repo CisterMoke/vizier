@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Group, Stack, Text, UnstyledButton } from '@mantine/core'
+import { CaretRight } from '@phosphor-icons/react'
 
 interface CollapsibleSectionProps {
   label: string
@@ -25,7 +26,7 @@ export function CollapsibleSection({ label, description, defaultOpened = false, 
             size="sm"
             style={{ transform: opened ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 150ms ease', display: 'inline-block' }}
           >
-            ▸
+            <CaretRight size={12} aria-hidden="true" />
           </Text>
           <Text fw={500} size="sm" component="span">{label}</Text>
         </Group>
