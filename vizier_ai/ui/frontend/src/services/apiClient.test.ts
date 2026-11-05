@@ -164,6 +164,7 @@ describe('generation streaming', () => {
 class FakeXHR {
   static instances: FakeXHR[] = []
   upload: { onprogress: ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null }
+  onprogress: (() => void) | null = null
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
   status = 200
@@ -213,6 +214,36 @@ describe('file upload generation', () => {
     expect(events.map((event) => event.type)).toEqual(['upload', 'prepare'])
     expect(events[0]).toMatchObject({ type: 'upload', fraction: 0.5 })
     expect(result.sessionId).toBe('s-upload')
+  })
+
+  it('dispatches pipeline events as download chunks arrive, before onload', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXHR)
+
+    const events: GenerationEvent[] = []
+    const pending = callGenerate(fileRequest, (event) => events.push(event)).then(
+      (result) => result,
+      (error) => {
+        throw error
+      }
+    )
+
+    await vi.waitFor(() => expect(FakeXHR.instances).toHaveLength(1))
+    const xhr = FakeXHR.instances[0]
+    xhr.upload.onprogress?.({ lengthComputable: true, loaded: 100, total: 100 })
+
+    xhr.responseText = `${JSON.stringify({ type: 'prepare', rowCount: 294193 })}\n`
+    xhr.onprogress?.()
+    expect(events.map((event) => event.type)).toEqual(['upload', 'prepare'])
+
+    xhr.responseText += `${JSON.stringify({ type: 'chart', index: 0, total: 7, insightId: 'i1', title: 'T1' })}\n`
+    xhr.onprogress?.()
+    expect(events.map((event) => event.type)).toEqual(['upload', 'prepare', 'chart'])
+
+    xhr.responseText += `${JSON.stringify({ type: 'complete', payload: { sessionId: 's-stream', insights: [] } })}\n`
+    xhr.onload?.()
+
+    const result = await pending
+    expect(result.sessionId).toBe('s-stream')
   })
 
   it('rejects with the backend detail when the upload fails', async () => {

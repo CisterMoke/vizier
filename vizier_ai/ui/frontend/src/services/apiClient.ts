@@ -115,24 +115,59 @@ const parseGenerationPayload = (payload: Record<string, unknown> | null): Genera
 
 /** Uploads the form via XHR — the only browser API that reports upload
  * progress — emitting `upload` events (0..1) through onProgress as the
- * bytes leave, then resolving with the full NDJSON response text. */
-const uploadForGenerationText = (
+ * bytes leave. The NDJSON response body streams back on the same request,
+ * so pipeline events are consumed from xhr.responseText as download
+ * chunks arrive (not buffered until onload) and each complete line is
+ * handed to onProgress immediately; resolves with the complete payload. */
+const uploadForGeneration = (
   url: string,
   formData: FormData,
   onProgress?: ProgressHandler
-): Promise<string> =>
+): Promise<Record<string, unknown> | null> =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', url)
+    let consumed = 0
+    let tail = ''
+    let payload: Record<string, unknown> | null = null
+
+    const consume = (): void => {
+      // before headers arrive xhr.status is 0; a non-2xx body (JSON error,
+      // not NDJSON) must not be dispatched as progress events
+      if (xhr.status !== 0 && (xhr.status < 200 || xhr.status >= 300)) return
+      tail += xhr.responseText.slice(consumed)
+      consumed = xhr.responseText.length
+      const lines = tail.split('\n')
+      tail = lines.pop() ?? ''
+      const chunkPayload = processGenerationText(lines.join('\n'), onProgress)
+      if (chunkPayload) payload = chunkPayload
+    }
+
     xhr.upload.onprogress = (event) => {
       if (onProgress && event.lengthComputable && event.total > 0) {
         onProgress({ type: 'upload', fraction: Math.min(event.loaded / event.total, 1) })
       }
     }
+    xhr.onprogress = () => {
+      try {
+        consume()
+      } catch (error) {
+        reject(error)
+      }
+    }
     xhr.onerror = () => reject(new Error('The upload request failed.'))
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(xhr.responseText)
+        try {
+          consume()
+          if (tail.trim()) {
+            const tailPayload = processGenerationText(tail, onProgress)
+            if (tailPayload) payload = tailPayload
+          }
+          resolve(payload)
+        } catch (error) {
+          reject(error)
+        }
       } else {
         reject(new Error(extractErrorMessage(xhr.status, xhr.responseText)))
       }
@@ -198,12 +233,12 @@ export const callGenerate = async (
       formData.append('excelOptions', JSON.stringify(request.excelOptions))
     }
 
-    const text = await uploadForGenerationText(
+    const payload = await uploadForGeneration(
       `${baseUrl}/api/generate-upload`,
       formData,
       onProgress
     )
-    return parseGenerationPayload(processGenerationText(text, onProgress))
+    return parseGenerationPayload(payload)
   }
 
   const response = await fetch(`${baseUrl}/api/generate`, {

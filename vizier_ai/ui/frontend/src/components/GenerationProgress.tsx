@@ -18,11 +18,12 @@ interface Checkpoint {
   title: string
 }
 
-/** Checkpoint dots on the track: schema, insights, charts, done. */
+/** Checkpoint dots on the track: schema, insights, done. The final band
+ * (charts) has no intermediate dot — it fills stepwise from the insights
+ * dot to Done, with complete earning the very last step. */
 const CHECKPOINTS: Checkpoint[] = [
   { key: 'schema', position: 25, title: 'Schema' },
   { key: 'insights', position: 50, title: 'Insights' },
-  { key: 'charts', position: 75, title: 'Charts' },
   { key: 'done', position: 100, title: 'Done' },
 ]
 
@@ -81,7 +82,9 @@ const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal
       return 25
     case 'charts':
       if (chartTotal && chartTotal > 0) {
-        return 50 + (25 * ((chartIndex ?? 0) + 1)) / chartTotal
+        // complete counts as the final step of the band: the last chart
+        // lands short of Done, so only the complete event reaches 100%
+        return 50 + (50 * ((chartIndex ?? 0) + 1)) / (chartTotal + 1)
       }
       return 50
     case 'done':
@@ -106,9 +109,9 @@ const targetPosition = (
       return 50
     case 'charts':
       if (chartTotal && chartTotal > 0) {
-        return 50 + (25 * ((chartIndex ?? 0) + 1)) / chartTotal
+        return 50 + (50 * ((chartIndex ?? 0) + 1)) / (chartTotal + 1)
       }
-      return 75
+      return 50
     case 'done':
       return 100
   }
@@ -125,8 +128,6 @@ const checkpointActive = (checkpoint: Checkpoint, phase: GenerationPhase): boole
       return phase === 'upload' || phase === 'prepare' || phase === 'schema'
     case 'insights':
       return phase === 'insights'
-    case 'charts':
-      return phase === 'charts'
     case 'done':
       return false
   }

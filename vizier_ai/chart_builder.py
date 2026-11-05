@@ -72,12 +72,12 @@ def _compiled_pair(path: str):
     rest = full_path[1:]
     if rest.startswith("."):
         rest = rest[1:]
-    if not rest:
+    if not rest or rest.startswith("["):
         return primary, None
 
     try:
         fallback = jsonpath_compile(f"$['{rest}']")
-    except (ExprSyntaxError, JSONPathTypeError):
+    except (ExprSyntaxError, JSONPathTypeError, IndexError):
         return primary, None
     return primary, fallback
 

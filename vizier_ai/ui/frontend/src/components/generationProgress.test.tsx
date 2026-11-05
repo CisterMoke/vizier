@@ -10,14 +10,14 @@ const renderProgress = (props: Parameters<typeof GenerationProgress>[0]) =>
   )
 
 describe('GenerationProgress', () => {
-  it('renders the step label and four checkpoint dots', () => {
+  it('renders the step label and three checkpoint dots', () => {
     renderProgress({ phase: 'prepare', label: 'Preparing data…' })
 
     expect(screen.getByText('Preparing data…')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-schema')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-insights')).toBeInTheDocument()
-    expect(screen.getByTestId('checkpoint-charts')).toBeInTheDocument()
     expect(screen.getByTestId('checkpoint-done')).toBeInTheDocument()
+    expect(screen.queryByTestId('checkpoint-charts')).not.toBeInTheDocument()
   })
 
   it('fills checkpoints as their phase completes', () => {
@@ -28,11 +28,10 @@ describe('GenerationProgress', () => {
 
     expect(filled('schema')).toBe(true)
     expect(filled('insights')).toBe(true)
-    expect(filled('charts')).toBe(false)
     expect(filled('done')).toBe(false)
   })
 
-  it('fills the charts checkpoint once the last chart event arrives', () => {
+  it('keeps the done checkpoint unfilled until the complete event', () => {
     renderProgress({ phase: 'charts', label: 'Building chart 3 of 3', chartIndex: 2, chartTotal: 3 })
 
     const filled = (key: string) =>
@@ -40,14 +39,13 @@ describe('GenerationProgress', () => {
 
     expect(filled('schema')).toBe(true)
     expect(filled('insights')).toBe(true)
-    expect(filled('charts')).toBe(true)
     expect(filled('done')).toBe(false)
   })
 
   it('marks every checkpoint filled when done', () => {
     renderProgress({ phase: 'done', label: 'Done' })
 
-    for (const key of ['schema', 'insights', 'charts', 'done']) {
+    for (const key of ['schema', 'insights', 'done']) {
       expect(screen.getByTestId(`checkpoint-${key}`).className).toContain('bg-cyan-300')
     }
   })
@@ -74,8 +72,13 @@ describe('GenerationProgress', () => {
     expect(creepTarget('prepare')).toBe(20)
     expect(creepTarget('schema')).toBe(20)
     expect(creepTarget('insights')).toBe(45)
-    expect(creepTarget('charts')).toBe(70)
-    expect(creepTarget('charts', 0, 2)).toBeCloseTo(62.5)
     expect(creepTarget('done')).toBe(100)
+  })
+
+  it('steps the final band per chart, reserving the last step for complete', () => {
+    expect(creepTarget('charts')).toBe(50)
+    expect(creepTarget('charts', 0, 2)).toBeCloseTo(66.667)
+    expect(creepTarget('charts', 1, 2)).toBeCloseTo(83.333)
+    expect(creepTarget('charts', 6, 7)).toBeCloseTo(93.75)
   })
 })
