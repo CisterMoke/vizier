@@ -18,14 +18,35 @@ interface Checkpoint {
   title: string
 }
 
-/** Checkpoint dots on the track: schema, insights, done. The final band
- * (charts) has no intermediate dot — it fills stepwise from the insights
- * dot to Done, with complete earning the very last step. */
-const CHECKPOINTS: Checkpoint[] = [
-  { key: 'schema', position: 25, title: 'Schema' },
-  { key: 'insights', position: 50, title: 'Insights' },
-  { key: 'done', position: 100, title: 'Done' },
-]
+/** Pipeline milestones in order, one per stage the user waits through
+ * (data+schema, insights, charts, completion). The checkpoint dots are
+ * spread evenly along the bar — one equal band per milestone — derived
+ * from this single list. */
+const MILESTONES = ['schema', 'insights', 'charts', 'done'] as const
+type Milestone = (typeof MILESTONES)[number]
+
+const MILESTONE_TITLES: Record<Milestone, string> = {
+  schema: 'Schema',
+  insights: 'Insights',
+  charts: 'Charts',
+  done: 'Done',
+}
+
+/** Even spacing: milestone k sits at the end of its band. */
+const milestonePosition = (milestone: Milestone): number =>
+  (100 * (MILESTONES.indexOf(milestone) + 1)) / MILESTONES.length
+
+/** A milestone's band starts where the previous milestone's band ended. */
+const bandStart = (milestone: Milestone): number => {
+  const index = MILESTONES.indexOf(milestone)
+  return index <= 0 ? 0 : milestonePosition(MILESTONES[index - 1])
+}
+
+const CHECKPOINTS: Checkpoint[] = MILESTONES.map((key) => ({
+  key,
+  position: milestonePosition(key),
+  title: MILESTONE_TITLES[key],
+}))
 
 /** Where the fill creeps toward while each checkpoint is pending. The
  * approach is asymptotic — the bar never quite reaches its target, so a
@@ -64,6 +85,12 @@ export const creepTarget = (
   return reached + (target - reached) * gapFraction
 }
 
+/** One exponential creep step toward the target — monotonic: the fill
+ * never moves backwards within a run (e.g. a completed upload sits at
+ * 25% while the schema phase's ceiling is lower; the bar must hold). */
+export const creepStep = (current: number, target: number, tauMs: number, dt: number): number =>
+  Math.max(current, target - (target - current) * Math.exp(-dt / tauMs))
+
 /** Finishing is certain: ease out to 100% quickly instead of creeping. */
 const FINISH_DURATION_MS = 450
 const FADE_DURATION_MS = 250
@@ -79,14 +106,14 @@ const reachedPosition = (phase: GenerationPhase, chartIndex?: number, chartTotal
     case 'schema':
       return 0
     case 'insights':
-      return 25
+      return bandStart('insights')
     case 'charts':
       if (chartTotal && chartTotal > 0) {
-        // complete counts as the final step of the band: the last chart
-        // lands short of Done, so only the complete event reaches 100%
-        return 50 + (50 * ((chartIndex ?? 0) + 1)) / (chartTotal + 1)
+        const start = bandStart('charts')
+        const width = milestonePosition('charts') - start
+        return start + (width * ((chartIndex ?? 0) + 1)) / chartTotal
       }
-      return 50
+      return bandStart('charts')
     case 'done':
       return 100
   }
@@ -100,18 +127,20 @@ const targetPosition = (
 ): number => {
   switch (phase) {
     case 'upload':
-      return 25 * (uploadFraction ?? 0)
+      return milestonePosition('schema') * (uploadFraction ?? 0)
     case 'prepare':
-      return 25
+      return milestonePosition('schema')
     case 'schema':
-      return 25
+      return milestonePosition('schema')
     case 'insights':
-      return 50
+      return milestonePosition('insights')
     case 'charts':
       if (chartTotal && chartTotal > 0) {
-        return 50 + (50 * ((chartIndex ?? 0) + 1)) / (chartTotal + 1)
+        const start = bandStart('charts')
+        const width = milestonePosition('charts') - start
+        return start + (width * ((chartIndex ?? 0) + 1)) / chartTotal
       }
-      return 50
+      return milestonePosition('charts')
     case 'done':
       return 100
   }
@@ -128,6 +157,8 @@ const checkpointActive = (checkpoint: Checkpoint, phase: GenerationPhase): boole
       return phase === 'upload' || phase === 'prepare' || phase === 'schema'
     case 'insights':
       return phase === 'insights'
+    case 'charts':
+      return phase === 'charts'
     case 'done':
       return false
   }
@@ -159,6 +190,18 @@ export function GenerationProgress({
     if (phase !== 'done') {
       setClosing(false)
     }
+  }, [phase])
+
+  // A new run can start while this instance is still mounted (the
+  // previous run's done-fade window): reset the fill and the finished
+  // latch so the bar starts from 0 and the next done phase still fires
+  // onFinished.
+  useEffect(() => {
+    if (phase !== 'upload' && phase !== 'prepare') return
+    displayRef.current = 0
+    finishedRef.current = false
+    if (fillRef.current) fillRef.current.style.width = '0%'
+    if (pctRef.current) pctRef.current.textContent = '0%'
   }, [phase])
 
   useEffect(() => {
@@ -197,7 +240,12 @@ export function GenerationProgress({
         // uncertainty: exponential approach — asymptotic creep toward
         // 80% of the gap to the next checkpoint, stalling visibly short
         const current = displayRef.current
-        const next = target - (target - current) * Math.exp(-dt / (phase === 'upload' ? UPLOAD_TRACK_TAU_MS : creepTauMs(phase)))
+        const next = creepStep(
+          current,
+          target,
+          phase === 'upload' ? UPLOAD_TRACK_TAU_MS : creepTauMs(phase),
+          dt
+        )
         paint(next)
       }
 
@@ -221,6 +269,7 @@ export function GenerationProgress({
           <div className="relative h-1.5 flex-1 rounded-full bg-gray-700/40">
             <div
               ref={fillRef}
+              data-testid="progress-fill"
               className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-300"
               style={{ width: '0%' }}
             />
