@@ -8,6 +8,34 @@ import { useWorkspace } from '../store/workspace'
 import { downloadSvg, exportPlotImage, saveInsightBundle, slugify } from '../lib/download'
 import { insightSvgUrl } from '../services/apiClient'
 
+const actionIconProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const
+
+/** Download arrow pointing into a tray. */
+const DownloadArrowIcon = () => (
+  <svg {...actionIconProps} aria-hidden="true">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5" />
+    <path d="M12 3v12" />
+  </svg>
+)
+
+/** Camera. */
+const CameraIcon = () => (
+  <svg {...actionIconProps} aria-hidden="true">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13" r="4" />
+  </svg>
+)
+
 export const SHOW_SUMMARY = true
 
 interface InsightCardProps {
@@ -79,7 +107,7 @@ export function InsightCard({ insight, sessionId, bundleContext, onEdit, onDelet
               data-disabled={!bundleContext?.schema}
               onClick={() => bundleContext?.schema && saveInsightBundle(insight, bundleContext)}
             >
-              ⬇
+              <DownloadArrowIcon />
             </ActionIcon>
           </Tooltip>
           <ActionIcon
@@ -89,7 +117,7 @@ export function InsightCard({ insight, sessionId, bundleContext, onEdit, onDelet
             disabled={!isStatic && !graphDiv}
             onClick={handleExportImage}
           >
-            ⤓
+            <CameraIcon />
           </ActionIcon>
           {edit ? (
             <ActionIcon
