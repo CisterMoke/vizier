@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Button, Group, SegmentedControl, Text } from '@mantine/core'
+import { Button, Group, SegmentedControl, Text, VisuallyHidden } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import type { GenerateRequest } from './domain/types'
 import { buildConstraintsPayload, EMPTY_CONSTRAINTS, type ConstraintsState } from './domain/constraints'
@@ -85,6 +85,22 @@ const StudioIcon = () => (
     <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
     <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
     <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </svg>
+)
+
+/** Column-count glyphs for the mosaic switcher. */
+const ColumnGlyph = ({ columns }: { columns: number }) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    {Array.from({ length: columns }).map((_, index) => (
+      <rect
+        key={index}
+        x={1 + index * (14 / columns)}
+        y={2}
+        width={14 / columns - 1}
+        height={12}
+        rx={1}
+      />
+    ))}
   </svg>
 )
 
@@ -218,9 +234,33 @@ function Studio() {
                 radius="md"
                 aria-label="Grid columns"
                 data={[
-                  { label: '1', value: '1' },
-                  { label: '2', value: '2' },
-                  { label: '3', value: '3' },
+                  {
+                    value: '1',
+                    label: (
+                      <>
+                        <ColumnGlyph columns={1} />
+                        <VisuallyHidden>One column</VisuallyHidden>
+                      </>
+                    ),
+                  },
+                  {
+                    value: '2',
+                    label: (
+                      <>
+                        <ColumnGlyph columns={2} />
+                        <VisuallyHidden>Two columns</VisuallyHidden>
+                      </>
+                    ),
+                  },
+                  {
+                    value: '3',
+                    label: (
+                      <>
+                        <ColumnGlyph columns={3} />
+                        <VisuallyHidden>Three columns</VisuallyHidden>
+                      </>
+                    ),
+                  },
                 ]}
                 value={String(columns)}
                 onChange={(value) => changeColumns(Number(value))}

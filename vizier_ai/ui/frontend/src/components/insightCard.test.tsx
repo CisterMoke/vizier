@@ -122,3 +122,8 @@ it('shows the edited dot and undo action only when an edit exists, and undo clea
   fireEvent.click(screen.getByRole('button', { name: /undo chart edit/i }))
   expect(screen.queryByTestId('edited-dot')).not.toBeInTheDocument()
 })
+
+it('fills its grid cell width', () => {
+  renderCard(liveInsight)
+  expect(screen.getByTestId('chart-card').className).toContain('w-full')
+})

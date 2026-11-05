@@ -60,3 +60,18 @@ it('marks the active view and calls onSelect only for enabled items', () => {
   fireEvent.click(studio)
   expect(onSelect).toHaveBeenCalledWith('studio')
 })
+
+it('fills the viewport height with centered brand and padded items', () => {
+  renderRail()
+  const root = screen.getByRole('navigation').parentElement as HTMLElement
+  expect(root.className).toContain('h-full')
+
+  expect(getComputedStyle(screen.getByText('V')).textAlign).toBe('center')
+
+  const button = screen.getByRole('button', { name: /studio/i }) as HTMLElement
+  expect(button.style.padding).not.toBe('')
+
+  const iconSlot = button.querySelector('span') as HTMLElement
+  expect(iconSlot.className).toContain('flex')
+  expect(iconSlot.className).toContain('justify-center')
+})

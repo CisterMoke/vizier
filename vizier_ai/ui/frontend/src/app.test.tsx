@@ -127,7 +127,11 @@ it('offers a column switcher that rebuilds the mosaic layout', async () => {
     expect.objectContaining({ i: 'i2', x: 6, w: 6 }),
   ])
 
-  fireEvent.click(screen.getByRole('radio', { name: '1' }))
+  const oneColumn = screen.getByRole('radio', { name: 'One column' })
+  expect(oneColumn.closest('label')?.querySelector('svg') ?? document.querySelector('.mantine-SegmentedControl-root svg')).not.toBeNull()
+  expect(document.querySelectorAll('.mantine-SegmentedControl-root svg')).toHaveLength(3)
+
+  fireEvent.click(oneColumn)
   expect(readLayout()).toEqual([
     expect.objectContaining({ i: 'i1', x: 0, w: 12 }),
     expect.objectContaining({ i: 'i2', x: 0, w: 12 }),

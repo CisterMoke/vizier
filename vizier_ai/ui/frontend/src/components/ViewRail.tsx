@@ -31,7 +31,7 @@ export function ViewRail({ views, activeView, onSelect }: ViewRailProps) {
   }
 
   return (
-    <div className="w-14 shrink-0">
+    <div className="h-full w-14 shrink-0">
       <div
         ref={railRef}
         role="navigation"
@@ -41,7 +41,7 @@ export function ViewRail({ views, activeView, onSelect }: ViewRailProps) {
           expanded ? 'absolute inset-y-0 left-0 z-40 w-56 shadow-2xl' : 'w-14'
         }`}
       >
-        <Text fw={700} size={expanded ? 'lg' : 'sm'} px="xs" py="xs" truncate>
+        <Text fw={700} size={expanded ? 'lg' : 'sm'} ta="center" px="xs" py="xs" truncate>
           {expanded ? 'Vizier' : 'V'}
         </Text>
         <Stack gap="xs" mt="md">
@@ -55,13 +55,18 @@ export function ViewRail({ views, activeView, onSelect }: ViewRailProps) {
                   setExpanded(true)
                   if (!view.disabled) onSelect?.(view.id)
                 }}
-                className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
+                /* padding must be inline: Mantine's unlayered base styles
+                   override Tailwind v4's layered px-2/py-2 back to 0 */
+                style={{ padding: '8px' }}
+                className={`flex items-center gap-3 rounded-md text-sm transition-colors ${
                   view.id === activeView
                     ? 'bg-cyan-500/15 text-cyan-300'
                     : 'text-gray-400 hover:bg-gray-800/60 hover:text-gray-200'
                 } ${view.disabled ? 'cursor-default opacity-40' : ''}`}
               >
-                <span className="w-6 text-center">{view.icon}</span>
+                {/* flex-centered: Tailwind preflight makes svg display:block,
+                    which text-align cannot center */}
+                <span className="flex w-6 justify-center">{view.icon}</span>
                 <span className={expanded ? 'inline' : 'hidden'}>{view.label}</span>
               </UnstyledButton>
             )

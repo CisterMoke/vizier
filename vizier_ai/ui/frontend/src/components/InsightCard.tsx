@@ -47,7 +47,7 @@ export function InsightCard({ insight, sessionId, bundleContext, onEdit, onDelet
       radius="lg"
       padding="sm"
       data-testid="chart-card"
-      className="group flex h-full flex-col gap-2 bg-gray-900/50 shadow-lg backdrop-blur-sm border-gray-700/50"
+      className="group flex h-full w-full flex-col gap-2 bg-gray-900/50 shadow-lg backdrop-blur-sm border-gray-700/50"
     >
       <Group justify="space-between" wrap="nowrap" gap="xs" className="grid-drag-handle cursor-grab">
         <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>

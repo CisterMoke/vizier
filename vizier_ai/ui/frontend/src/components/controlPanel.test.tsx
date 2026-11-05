@@ -131,3 +131,9 @@ it('shows the real data badge when real data is attached', () => {
   renderPanel({ hasRealData: true })
   expect(screen.getByText(/^real data$/i)).toBeInTheDocument()
 })
+
+it('fills its container height', () => {
+  const { container } = renderPanel()
+  const root = container.querySelector('.mantine-Paper-root') as HTMLElement | null
+  expect(root?.style.height).toBe('100%')
+})

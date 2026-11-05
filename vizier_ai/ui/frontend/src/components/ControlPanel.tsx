@@ -117,7 +117,7 @@ export function ControlPanel({
   }
 
   return (
-    <Paper withBorder radius="lg" p="lg" className="bg-gray-900/50 backdrop-blur-sm shadow-sm border-gray-700/50">
+    <Paper h="100%" withBorder radius="lg" p="lg" className="bg-gray-900/50 backdrop-blur-sm shadow-sm border-gray-700/50">
       <Stack gap="md">
         <div>
           <Title order={3}>Studio workspace</Title>
