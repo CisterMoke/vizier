@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -37,6 +38,7 @@ from vizier_ai.ui.models.api import (
     InsightsResponse
 )
 from vizier_ai.ui import static_render
+from vizier_ai.ui import watchdog
 from vizier_ai.ui.ratelimit import RateLimiter, GlobalRateLimiter, RateLimitConfig
 from vizier_ai.ui.sessions import (
     _create_session,
@@ -47,7 +49,23 @@ from vizier_ai.ui.sessions import (
     _set_session_schema,
 )
 
-app = FastAPI(title="Vizier AI LLM Proxy")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # systemd watchdog pings — only started when an interval is
+    # configured (WATCHDOG_INTERVAL_SECONDS) or systemd armed one
+    # (WatchdogSec= in the unit); None means the feature is disabled.
+    watchdog_task = None
+    interval = watchdog.resolve_interval()
+    if interval is not None:
+        watchdog_task = asyncio.create_task(watchdog.notify_loop(interval))
+    yield
+    if watchdog_task is not None:
+        watchdog_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await watchdog_task
+
+
+app = FastAPI(title="Vizier AI LLM Proxy", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,7 +101,11 @@ async def rate_limit_middleware(request: Request, call_next):
     # Rate limiting protects the LLM-backed API only. Static assets, the
     # SPA fallback route, and cheap page-load endpoints stay unrestricted.
     path = request.url.path
-    if not path.startswith("/api/") or path in ("/api/health", "/api/config"):
+    if path not in (
+        "/api/generate",
+        "/api/generate-upload",
+        "/api/regenerate",
+    ):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
