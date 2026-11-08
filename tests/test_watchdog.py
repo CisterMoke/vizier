@@ -38,12 +38,17 @@ class TestResolveInterval:
 
         assert watchdog.resolve_interval() == 15.0
 
-    def test_watchdog_pid_mismatch_disables(self, monkeypatch):
+    def test_watchdog_pid_mismatch_disables(self, monkeypatch, caplog):
         _clear_watchdog_env(monkeypatch)
         _arm_watchdog(monkeypatch, "30000000")
         monkeypatch.setenv("WATCHDOG_PID", str(os.getpid() + 1))
 
-        assert watchdog.resolve_interval() is None
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="vizier_ai.ui.watchdog"):
+            assert watchdog.resolve_interval() is None
+
+        assert "armed for PID" in caplog.text
 
     def test_watchdog_usec_without_pid_disables(self, monkeypatch):
         _clear_watchdog_env(monkeypatch)

@@ -28,7 +28,21 @@ def resolve_interval() -> float | None:
     """Return the watchdog ping interval in seconds, or None if disabled."""
     usec = os.getenv("WATCHDOG_USEC", "").strip()
     pid = os.getenv("WATCHDOG_PID", "").strip()
-    if not usec or not pid or pid != str(os.getpid()):
+    if not usec or not pid:
+        return None
+    if pid != str(os.getpid()):
+        # The app is not the unit's main process — typically caused by a
+        # wrapper in ExecStart (e.g. `uv run`), which spawns the app as a
+        # child. systemd only accepts watchdog pings from the main PID,
+        # so pinging from here would be futile. Fix the unit instead
+        # (see DEPLOYMENT.md): ExecStart the venv's uvicorn directly.
+        logger.warning(
+            "systemd watchdog armed for PID %s but this process is %s — "
+            "not pinging; make the app the unit's main process "
+            "(ExecStart the venv's uvicorn directly, not via a wrapper)",
+            pid,
+            os.getpid(),
+        )
         return None
     try:
         interval = float(usec) / 1e6 / 2
