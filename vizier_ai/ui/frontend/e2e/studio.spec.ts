@@ -86,3 +86,31 @@ test('the visible resize handle resizes a cell', async ({ page }) => {
   const after = await item.getAttribute('style')
   expect(after).not.toBe(before)
 })
+
+async function openFirstCard(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.getByLabel(/data description/i).fill('orders(id int, total decimal)')
+  await page.getByRole('button', { name: /generate insights/i }).click()
+
+  const item = page.locator('.react-grid-item').first()
+  await expect(item).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: /orders trend/i })).toBeVisible()
+  return page.getByRole('button', { name: 'Edit chart' }).locator('..')
+}
+
+test('card action buttons stay hidden until hover on pointer-fine devices', async ({ page }) => {
+  const actions = await openFirstCard(page)
+  await expect(actions).toHaveCSS('opacity', '0')
+
+  await page.getByTestId('chart-card').first().hover()
+  await expect(actions).toHaveCSS('opacity', '1')
+})
+
+test.describe('touch device', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 412, height: 915 } })
+
+  test('card action buttons are visible without hover on touch devices', async ({ page }) => {
+    const actions = await openFirstCard(page)
+    await expect(actions).toHaveCSS('opacity', '1')
+  })
+})

@@ -70,7 +70,7 @@ export function InsightCard({ insight, sessionId, bundleContext, onEdit, onDelet
         <Group
           gap={4}
           wrap="nowrap"
-          className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          className="pointer-coarse:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         >
           <ActionIcon variant="subtle" aria-label="Edit chart" title="Edit chart" onClick={onEdit}>
             <PencilSimple size={16} aria-hidden="true" />
