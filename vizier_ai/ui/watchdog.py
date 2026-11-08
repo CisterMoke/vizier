@@ -6,16 +6,13 @@ are sent via cysystemd — the python-systemd package's canonical
 distribution (``pip install systemd`` is a deprecated shim that
 re-exports it).
 
-Interval resolution, in order:
-
-1. ``WATCHDOG_INTERVAL_SECONDS`` — explicit interval; wins when set
-   to a positive number. ``0`` or a non-number disables the watchdog.
-2. Half of ``WATCHDOG_USEC`` — the interval systemd exports when the
-   unit arms a watchdog (``WatchdogSec=``), and only when
-   ``WATCHDOG_PID`` matches this process (pings from other processes
-   are ignored by systemd, e.g. under multi-worker servers).
-3. Otherwise ``None`` — the watchdog is disabled and no background
-   task is started.
+The interval has a single source of truth: the environment systemd
+exports when it arms a watchdog. ``resolve_interval`` returns half of
+``WATCHDOG_USEC`` (the keep-alive rate systemd's docs recommend), and
+only when ``WATCHDOG_PID`` matches this process — pings from other
+processes are ignored by systemd, e.g. under multi-worker servers.
+No watchdog armed (or armed for a different process) means ``None``:
+the feature is disabled and no background task is started.
 """
 
 import asyncio
@@ -29,18 +26,6 @@ logger = logging.getLogger(__name__)
 
 def resolve_interval() -> float | None:
     """Return the watchdog ping interval in seconds, or None if disabled."""
-    raw = os.getenv("WATCHDOG_INTERVAL_SECONDS", "").strip()
-    if raw:
-        try:
-            interval = float(raw)
-        except ValueError:
-            logger.warning(
-                "WATCHDOG_INTERVAL_SECONDS=%r is not a number; watchdog disabled",
-                raw,
-            )
-            return None
-        return interval if interval > 0 else None
-
     usec = os.getenv("WATCHDOG_USEC", "").strip()
     pid = os.getenv("WATCHDOG_PID", "").strip()
     if not usec or not pid or pid != str(os.getpid()):
@@ -48,6 +33,7 @@ def resolve_interval() -> float | None:
     try:
         interval = float(usec) / 1e6 / 2
     except ValueError:
+        logger.warning("WATCHDOG_USEC=%r is not a number; watchdog disabled", usec)
         return None
     return interval if interval > 0 else None
 

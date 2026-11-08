@@ -87,7 +87,6 @@ npm run dev
 | `GLOBAL_RATE_LIMIT_MAX_REQUESTS` | 100 | Global request limit per window |
 | `GLOBAL_RATE_LIMIT_WINDOW_SECONDS` | 60 | Global rate limit window |
 | `MAX_FILE_SIZE_MB` | 10 | Max file upload size in MB |
-| `WATCHDOG_INTERVAL_SECONDS` | (unset = disabled) | systemd watchdog ping interval in seconds; unset or `0` disables the watchdog. When systemd arms one (`WatchdogSec=` in the unit), the interval defaults to half of it |
 
 **Frontend (`vizier_ai/ui/frontend/.env`):**
 

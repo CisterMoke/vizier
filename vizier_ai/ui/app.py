@@ -51,9 +51,9 @@ from vizier_ai.ui.sessions import (
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # systemd watchdog pings — only started when an interval is
-    # configured (WATCHDOG_INTERVAL_SECONDS) or systemd armed one
-    # (WatchdogSec= in the unit); None means the feature is disabled.
+    # systemd watchdog pings — only started when systemd armed a
+    # watchdog for this process (WatchdogSec= in the unit); None
+    # means the feature is disabled.
     watchdog_task = None
     interval = watchdog.resolve_interval()
     if interval is not None:

@@ -710,12 +710,16 @@ class TestRateLimitExemptions:
         statuses = [tight_client.get("/api/config").status_code for _ in range(6)]
         assert all(status != 429 for status in statuses)
 
-    def test_api_requests_still_limited(self, tight_client):
+    def test_llm_endpoints_still_limited(self, tight_client):
         for _ in range(3):
-            assert tight_client.get("/api/session/s/insight/i/svg").status_code == 404
+            assert tight_client.post("/api/regenerate", json={"sessionId": "s"}).status_code == 404
 
-        response = tight_client.get("/api/session/s/insight/i/svg")
+        response = tight_client.post("/api/regenerate", json={"sessionId": "s"})
         assert response.status_code == 429
+
+    def test_non_llm_api_not_limited(self, tight_client):
+        statuses = [tight_client.get("/api/session/s/insight/i/svg").status_code for _ in range(6)]
+        assert all(status != 429 for status in statuses)
 
 
 @pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
