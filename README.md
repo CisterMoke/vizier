@@ -1,5 +1,9 @@
 # Vizier AI
 
+## Live demo: [vizier.dedoncker.dev](https://vizier.dedoncker.dev)
+
+-----
+
 Turn any data description into interactive analytics dashboards — instantly.
 
 Vizier AI takes a free-form description of your dataset (prose, schema, sample rows, or all three), uses an LLM to generate analytics insights with chart specifications, and renders them as interactive Plotly charts. Optionally connect real data via file upload, REST API, or SQL query to replace mock data with the real thing.
